@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/services/backend_api_service.dart';
 import '../../widgets/urgency_badge.dart';
 import '../../models/missing_person.dart';
 
@@ -20,6 +21,8 @@ class _HomePageState extends State<HomePage>
   double _geoAlertRadius = 2.0;
   bool _geoAlertEnabled = false;
   String _searchQuery = '';
+  bool _isLoadingCases = true;
+  String? _casesLoadError;
 
   // dynamic monitoring state
   List<MissingPerson> _urgentCases = [];
@@ -41,6 +44,34 @@ class _HomePageState extends State<HomePage>
       curve: Curves.easeOut,
     );
     _animationController.forward();
+    _loadCases();
+  }
+
+  Future<void> _loadCases() async {
+    setState(() {
+      _isLoadingCases = true;
+      _casesLoadError = null;
+    });
+
+    try {
+      final apiCases = await BackendApiService.fetchCases();
+      if (!mounted) return;
+      setState(() {
+        _urgentCases = apiCases;
+        _feedPosts = apiCases;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _casesLoadError = error.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingCases = false;
+        });
+      }
+    }
   }
 
   @override
@@ -163,6 +194,19 @@ class _HomePageState extends State<HomePage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (_geoAlertEnabled) _buildGeoAlertBanner(),
+                    if (_isLoadingCases)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 16),
+                        child: LinearProgressIndicator(),
+                      ),
+                    if (_casesLoadError != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Text(
+                          'Unable to load cases: $_casesLoadError',
+                          style: const TextStyle(color: AppColors.error),
+                        ),
+                      ),
                     _buildSearchBar(),
                     const SizedBox(height: 24),
                     _buildUrgentCasesSection(urgentCases),

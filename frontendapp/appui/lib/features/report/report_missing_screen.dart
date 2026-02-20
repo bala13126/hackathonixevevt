@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/services/backend_api_service.dart';
 import '../../models/missing_person.dart';
 import '../../widgets/secure_screen.dart';
 
@@ -29,6 +30,7 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
   int _currentStep = 0;
   bool _isAutoFilling = false;
   bool _isVoiceFilling = false;
+  bool _isSubmitting = false;
   XFile? _selectedPhoto;
   PrivacyLevel _selectedPrivacy = PrivacyLevel.protected;
   String _selectedGender = 'Female';
@@ -219,38 +221,45 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
     );
   }
 
-  void _submitReport() {
-    if (_formKey.currentState!.validate()) {
+  Future<void> _submitReport() async {
+    if (!_formKey.currentState!.validate() || _isSubmitting) return;
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    try {
+      final createdCase = await BackendApiService.createCase(
+        name: _nameController.text.trim(),
+        age: int.tryParse(_ageController.text.trim()) ?? 0,
+        location: _lastSeenLocationController.text.trim(),
+        description: _descriptionController.text.trim(),
+        urgency: UrgencyLevel.high,
+        photo: _selectedPhoto,
+      );
+
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Report submitted successfully'),
           backgroundColor: AppColors.success,
         ),
       );
-
-      // construct a simple MissingPerson object to pass back
-      final newCase = MissingPerson(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        name: _nameController.text,
-        age: int.tryParse(_ageController.text) ?? 0,
-        photoUrl: _selectedPhoto?.path ?? '',
-        lastSeenLocation: _lastSeenLocationController.text,
-        lastSeenTime: DateTime.now(),
-        distanceKm: 0.0,
-        urgency: UrgencyLevel.high,
-        isVerified: false,
-        description: _descriptionController.text,
-        height: double.tryParse(_heightController.text) ?? 0,
-        hairColor: _hairColorController.text,
-        eyeColor: _eyeColorController.text,
-        clothing: _clothingController.text,
-        contactName: _contactNameController.text,
-        contactPhone: _contactPhoneController.text,
-        privacyLevel: _selectedPrivacy,
-        status: CaseStatus.submitted,
+      Navigator.pop(context, createdCase);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to submit report: $error'),
+          backgroundColor: AppColors.error,
+        ),
       );
-
-      Navigator.pop(context, newCase);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
     }
   }
 
@@ -325,8 +334,14 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
                 child: Row(
                   children: [
                     ElevatedButton(
-                      onPressed: details.onStepContinue,
-                      child: Text(_currentStep == 3 ? 'Submit' : 'Next'),
+                      onPressed: _isSubmitting ? null : details.onStepContinue,
+                      child: _isSubmitting
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(_currentStep == 3 ? 'Submit' : 'Next'),
                     ),
                     const SizedBox(width: 12),
                     if (_currentStep > 0)

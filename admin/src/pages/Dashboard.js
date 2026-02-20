@@ -28,6 +28,8 @@ ChartJS.register(
   LineElement
 );
 
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://127.0.0.1:8000/api';
+
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
 
@@ -39,8 +41,6 @@ const Dashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   // API Configuration
-  const API_BASE_URL = 'http://localhost:5000/api';
-
   // Fetch Data (Polling for real-time updates)
   useEffect(() => {
     const fetchData = async () => {
