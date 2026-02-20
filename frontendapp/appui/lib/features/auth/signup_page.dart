@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/services/backend_api_service.dart';
 import '../../widgets/phone_input.dart';
 import '../../widgets/password_strength_indicator.dart';
 
@@ -22,6 +23,7 @@ class _SignupPageState extends State<SignupPage> {
   final _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _isSubmitting = false;
 
   @override
   void dispose() {
@@ -73,9 +75,50 @@ class _SignupPageState extends State<SignupPage> {
     return null;
   }
 
-  void _handleSignup() {
-    if (_formKey.currentState!.validate()) {
-      Navigator.pushReplacementNamed(context, AppConstants.routeLocationPermission);
+  Future<void> _handleSignup() async {
+    if (!_formKey.currentState!.validate() || _isSubmitting) return;
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    final email = _emailController.text.trim();
+    final phone = _phoneController.text.trim();
+    final username = phone.isNotEmpty
+        ? phone
+        : (email.isNotEmpty ? email.split('@').first : 'user');
+
+    try {
+      await BackendApiService.register(
+        username: username,
+        email: email,
+        password: _passwordController.text.trim(),
+        firstName: _firstNameController.text.trim(),
+        lastName: _lastNameController.text.trim(),
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Account created. Please log in.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+      Navigator.pop(context);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Signup failed: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
     }
   }
 
@@ -84,10 +127,7 @@ class _SignupPageState extends State<SignupPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Create Account'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('Create Account'), centerTitle: true),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -206,17 +246,26 @@ class _SignupPageState extends State<SignupPage> {
                 ),
                 const SizedBox(height: 32),
                 ElevatedButton(
-                  onPressed: _handleSignup,
+                  onPressed: _isSubmitting ? null : _handleSignup,
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: const Text(
-                    'Create Account',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text(
+                          'Create Account',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                 ),
                 const SizedBox(height: 24),
                 Row(
@@ -225,7 +274,9 @@ class _SignupPageState extends State<SignupPage> {
                     Text(
                       'Already have an account? ',
                       style: TextStyle(
-                        color: isDark ? Colors.white70 : AppColors.textSecondary,
+                        color: isDark
+                            ? Colors.white70
+                            : AppColors.textSecondary,
                       ),
                     ),
                     TextButton(

@@ -170,4 +170,63 @@ class BackendApiService {
       throw Exception('Failed to submit tip (${streamed.statusCode})');
     }
   }
+
+  static Future<Map<String, dynamic>> login({
+    required String usernameOrEmail,
+    required String password,
+  }) async {
+    final trimmed = usernameOrEmail.trim();
+    final payload = <String, String>{'password': password};
+    if (trimmed.contains('@')) {
+      payload['email'] = trimmed;
+    } else {
+      payload['username'] = trimmed;
+    }
+
+    final response = await http.post(
+      _endpoint('auth/login'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Login failed (${response.statusCode})');
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+    return {};
+  }
+
+  static Future<Map<String, dynamic>> register({
+    required String username,
+    required String email,
+    required String password,
+    required String firstName,
+    required String lastName,
+  }) async {
+    final response = await http.post(
+      _endpoint('auth/register'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'username': username,
+        'email': email,
+        'password': password,
+        'firstName': firstName,
+        'lastName': lastName,
+      }),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Signup failed (${response.statusCode})');
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+    return {};
+  }
 }

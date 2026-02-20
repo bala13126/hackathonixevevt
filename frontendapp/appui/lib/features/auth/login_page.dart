@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/services/backend_api_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -14,6 +15,7 @@ class _LoginPageState extends State<LoginPage> {
   final _emailPhoneController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _isSubmitting = false;
 
   @override
   void dispose() {
@@ -50,9 +52,34 @@ class _LoginPageState extends State<LoginPage> {
     return null;
   }
 
-  void _handleLogin() {
-    if (_formKey.currentState!.validate()) {
+  Future<void> _handleLogin() async {
+    if (!_formKey.currentState!.validate() || _isSubmitting) return;
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    try {
+      await BackendApiService.login(
+        usernameOrEmail: _emailPhoneController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+      if (!mounted) return;
       Navigator.pushReplacementNamed(context, AppConstants.routeMain);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Login failed: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
     }
   }
 
@@ -70,11 +97,7 @@ class _LoginPageState extends State<LoginPage> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SizedBox(height: 40),
-                Icon(
-                  Icons.emergency,
-                  size: 80,
-                  color: AppColors.accent,
-                ),
+                Icon(Icons.emergency, size: 80, color: AppColors.accent),
                 const SizedBox(height: 24),
                 Text(
                   'Welcome Back',
@@ -141,17 +164,26 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 const SizedBox(height: 24),
                 ElevatedButton(
-                  onPressed: _handleLogin,
+                  onPressed: _isSubmitting ? null : _handleLogin,
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: const Text(
-                    'Login',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text(
+                          'Login',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                 ),
                 const SizedBox(height: 24),
                 Row(
@@ -160,7 +192,9 @@ class _LoginPageState extends State<LoginPage> {
                     Text(
                       'Don\'t have an account? ',
                       style: TextStyle(
-                        color: isDark ? Colors.white70 : AppColors.textSecondary,
+                        color: isDark
+                            ? Colors.white70
+                            : AppColors.textSecondary,
                       ),
                     ),
                     TextButton(
