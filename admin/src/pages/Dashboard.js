@@ -12,7 +12,7 @@ import {
   LineElement,
 } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
-import { FiGrid, FiCheckSquare, FiMessageSquare, FiBarChart2, FiAward, FiLoader, FiActivity, FiClock, FiAlertCircle, FiTrendingUp } from 'react-icons/fi';
+import { FiGrid, FiCheckSquare, FiMessageSquare, FiBarChart2, FiAward, FiLoader, FiActivity, FiClock, FiAlertCircle, FiTrendingUp, FiMapPin } from 'react-icons/fi';
 import './Dashboard.css';
 
 // Register ChartJS components
@@ -30,12 +30,23 @@ ChartJS.register(
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://127.0.0.1:8000/api';
 
+const resolveMediaUrl = (path) => {
+  const value = (path || '').trim();
+  if (!value) return '';
+  if (value.startsWith('http://') || value.startsWith('https://')) {
+    return value;
+  }
+  const base = API_BASE_URL.replace('/api', '');
+  return `${base}${value.startsWith('/') ? value : `/${value}`}`;
+};
+
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
 
   // Real-time Data State
   const [cases, setCases] = useState([]);
   const [tips, setTips] = useState([]);
+  const [sightingReports, setSightingReports] = useState([]);
   const [users, setUsers] = useState([]);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [isLoading, setIsLoading] = useState(true);
@@ -51,9 +62,41 @@ const Dashboard = () => {
           fetch(`${API_BASE_URL}/users`)
         ]);
 
-        if (casesRes.ok) setCases(await casesRes.json());
+        let fetchedCases = [];
+        if (casesRes.ok) {
+          fetchedCases = await casesRes.json();
+          setCases(fetchedCases);
+        }
         if (tipsRes.ok) setTips(await tipsRes.json());
         if (usersRes.ok) setUsers(await usersRes.json());
+
+        if (fetchedCases.length > 0) {
+          const reportsResponses = await Promise.all(
+            fetchedCases.map((caseItem) =>
+              fetch(`${API_BASE_URL}/cases/${caseItem.id}/reports/`)
+            )
+          );
+
+          const reportsPayloads = await Promise.all(
+            reportsResponses.map(async (response) =>
+              response.ok ? response.json() : []
+            )
+          );
+
+          const flattened = reportsPayloads
+            .flat()
+            .map((report) => ({
+              ...report,
+              caseName:
+                fetchedCases.find((caseItem) => caseItem.id === report.missing_case_id)?.name ||
+                `Case #${report.missing_case_id}`,
+            }));
+
+          setSightingReports(flattened);
+        } else {
+          setSightingReports([]);
+        }
+
         setLastUpdated(new Date());
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
@@ -94,6 +137,35 @@ const Dashboard = () => {
       });
     } catch (error) {
       console.error('Failed to verify tip:', error);
+    }
+  };
+
+  const handleReviewSighting = async (id, status, closeCase = false) => {
+    setSightingReports(
+      sightingReports.map((report) =>
+        report.id === id ? { ...report, status } : report
+      )
+    );
+
+    const targetReport = sightingReports.find((report) => report.id === id);
+    if (status === 'Accepted' && closeCase && targetReport?.missing_case_id) {
+      setCases(
+        cases.map((caseItem) =>
+          caseItem.id === targetReport.missing_case_id
+            ? { ...caseItem, status: 'Solved' }
+            : caseItem
+        )
+      );
+    }
+
+    try {
+      await fetch(`${API_BASE_URL}/reports/${id}/review/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, closeCase }),
+      });
+    } catch (error) {
+      console.error('Failed to review sighting report:', error);
     }
   };
 
@@ -162,6 +234,15 @@ const Dashboard = () => {
         </div>
         <div className="stat-icon icon-purple">
           <FiMessageSquare size={24} />
+        </div>
+      </div>
+      <div className="stat-card">
+        <div>
+          <h3>Sighting Reports</h3>
+          <p>{sightingReports.length}</p>
+        </div>
+        <div className="stat-icon icon-orange">
+          <FiMapPin size={24} />
         </div>
       </div>
     </div>
@@ -251,6 +332,57 @@ const Dashboard = () => {
     </div>
   );
 
+  const renderSightings = () => (
+    <div className="table-container">
+      <h2>Public Sighting Reports</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Case</th>
+            <th>Reporter</th>
+            <th>Location</th>
+            <th>Evidence</th>
+            <th>Description</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sightingReports.length === 0 ? (
+            <tr><td colSpan="7" className="empty-state">No public sighting reports available.</td></tr>
+          ) : sightingReports.map((report) => (
+            <tr key={report.id}>
+              <td>{report.caseName}</td>
+              <td>{report.reporter_name || 'Anonymous'}</td>
+              <td>{report.latitude}, {report.longitude}</td>
+              <td>
+                {report.image ? (
+                  <a href={resolveMediaUrl(report.image)} target="_blank" rel="noreferrer">
+                    View Image
+                  </a>
+                ) : 'N/A'}
+              </td>
+              <td>{report.description}</td>
+              <td>
+                <span className={`status-badge ${(report.status || 'Pending').toLowerCase()}`}>
+                  {report.status || 'Pending'}
+                </span>
+              </td>
+              <td>
+                {(report.status || 'Pending') === 'Pending' && (
+                  <>
+                    <button className="btn-solve" onClick={() => handleReviewSighting(report.id, 'Accepted', true)}>Verify & Close</button>
+                    <button className="btn-reject" onClick={() => handleReviewSighting(report.id, 'Rejected')}>Reject</button>
+                  </>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
   const renderAnalytics = () => (
     <div className="analytics-grid">
       <div className="chart-card">
@@ -323,6 +455,7 @@ const Dashboard = () => {
           <button className={activeTab === 'overview' ? 'active' : ''} onClick={() => setActiveTab('overview')}><FiGrid /><span>Dashboard</span></button>
           <button className={activeTab === 'cases' ? 'active' : ''} onClick={() => setActiveTab('cases')}><FiCheckSquare /><span>Case Management</span></button>
           <button className={activeTab === 'tips' ? 'active' : ''} onClick={() => setActiveTab('tips')}><FiMessageSquare /><span>Tip Monitoring</span></button>
+          <button className={activeTab === 'sightings' ? 'active' : ''} onClick={() => setActiveTab('sightings')}><FiMapPin /><span>Sighting Reports</span></button>
           <button className={activeTab === 'analytics' ? 'active' : ''} onClick={() => setActiveTab('analytics')}><FiBarChart2 /><span>Analytics</span></button>
           <button className={activeTab === 'honour' ? 'active' : ''} onClick={() => setActiveTab('honour')}><FiAward /><span>Honour System</span></button>
         </nav>
@@ -341,6 +474,7 @@ const Dashboard = () => {
           {activeTab === 'overview' && renderOverview()}
           {activeTab === 'cases' && renderCases()}
           {activeTab === 'tips' && renderTips()}
+          {activeTab === 'sightings' && renderSightings()}
           {activeTab === 'analytics' && renderAnalytics()}
           {activeTab === 'honour' && renderHonour()}
         </div>

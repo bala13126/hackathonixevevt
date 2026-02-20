@@ -171,6 +171,49 @@ class BackendApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> submitSightingReport({
+    required int caseId,
+    required String description,
+    required double latitude,
+    required double longitude,
+    required XFile image,
+    String? reporterName,
+    String? reporterContact,
+  }) async {
+    final request =
+        http.MultipartRequest('POST', _endpoint('cases/$caseId/report-sighting/'))
+          ..fields['description'] = description
+          ..fields['latitude'] = latitude.toString()
+          ..fields['longitude'] = longitude.toString();
+
+    final trimmedReporterName = (reporterName ?? '').trim();
+    if (trimmedReporterName.isNotEmpty) {
+      request.fields['reporter_name'] = trimmedReporterName;
+    }
+
+    final trimmedReporterContact = (reporterContact ?? '').trim();
+    if (trimmedReporterContact.isNotEmpty) {
+      request.fields['reporter_contact'] = trimmedReporterContact;
+    }
+
+    final bytes = await image.readAsBytes();
+    request.files.add(
+      http.MultipartFile.fromBytes('image', bytes, filename: image.name),
+    );
+
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Failed to submit sighting report (${response.statusCode})');
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+    return {};
+  }
+
   static Future<Map<String, dynamic>> login({
     required String usernameOrEmail,
     required String password,
@@ -228,5 +271,62 @@ class BackendApiService {
       return decoded;
     }
     return {};
+  }
+
+  static Future<Map<String, dynamic>> parseVoiceReport({
+    required String text,
+  }) async {
+    final response = await http.post(
+      _endpoint('voice/parse'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'text': text}),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        _extractError(response, 'Voice parse failed (${response.statusCode})'),
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+    return {};
+  }
+
+  static Future<String> aiChat({required String text}) async {
+    final response = await http.post(
+      _endpoint('ai/chat'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'text': text}),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        _extractError(response, 'AI chat failed (${response.statusCode})'),
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map<String, dynamic>) {
+      return (decoded['reply'] ?? '').toString();
+    }
+    return '';
+  }
+
+  static String _extractError(http.Response response, String fallback) {
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        final detail = decoded['detail']?.toString().trim();
+        if (detail != null && detail.isNotEmpty) {
+          return detail;
+        }
+      }
+    } catch (_) {
+      // Ignore parsing errors and use fallback.
+    }
+    return fallback;
   }
 }

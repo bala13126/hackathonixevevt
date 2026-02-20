@@ -247,6 +247,8 @@ tbody tr:hover {
 .status-badge.active { background-color: #bee3f8; color: #2c5282; }
 .status-badge.solved { background-color: #c6f6d5; color: #22543d; }
 .status-badge.rejected { background-color: #fed7d7; color: #822727; }
+.status-badge.reviewed { background-color: #c3dafe; color: #2a4365; }
+.status-badge.accepted { background-color: #c6f6d5; color: #22543d; }
 
 .urgency-badge { padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; }
 .urgency-badge.high { background-color: #fed7d7; color: #822727; }
