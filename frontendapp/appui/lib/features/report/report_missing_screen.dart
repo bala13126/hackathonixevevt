@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/missing_person.dart';
 import '../../widgets/secure_screen.dart';
@@ -23,10 +24,12 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
   final _descriptionController = TextEditingController();
   final _contactNameController = TextEditingController();
   final _contactPhoneController = TextEditingController();
+  final ImagePicker _imagePicker = ImagePicker();
 
   int _currentStep = 0;
   bool _isAutoFilling = false;
   bool _isVoiceFilling = false;
+  XFile? _selectedPhoto;
   PrivacyLevel _selectedPrivacy = PrivacyLevel.protected;
   String _selectedGender = 'Female';
   String? _highlightField;
@@ -168,6 +171,54 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
     });
   }
 
+  Future<void> _pickPhoto(ImageSource source) async {
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: source,
+        imageQuality: 85,
+      );
+      if (picked != null) {
+        setState(() {
+          _selectedPhoto = picked;
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to pick photo right now.')),
+      );
+    }
+  }
+
+  void _showPhotoSourceSheet() {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Upload from gallery'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickPhoto(ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take a photo'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickPhoto(ImageSource.camera);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _submitReport() {
     if (_formKey.currentState!.validate()) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -182,7 +233,7 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         name: _nameController.text,
         age: int.tryParse(_ageController.text) ?? 0,
-        photoUrl: '',
+        photoUrl: _selectedPhoto?.path ?? '',
         lastSeenLocation: _lastSeenLocationController.text,
         lastSeenTime: DateTime.now(),
         distanceKm: 0.0,
@@ -349,6 +400,60 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
                 isActive: _currentStep >= 1,
                 content: Column(
                   children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _showPhotoSourceSheet,
+                            icon: const Icon(Icons.upload_outlined),
+                            label: Text(
+                              _selectedPhoto == null
+                                  ? 'Upload Photo'
+                                  : 'Change Photo',
+                            ),
+                          ),
+                        ),
+                        if (_selectedPhoto != null) ...[
+                          const SizedBox(width: 8),
+                          IconButton(
+                            tooltip: 'Remove photo',
+                            onPressed: () {
+                              setState(() {
+                                _selectedPhoto = null;
+                              });
+                            },
+                            icon: const Icon(Icons.delete_outline),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (_selectedPhoto != null) ...[
+                      const SizedBox(height: 12),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.network(
+                          _selectedPhoto!.path,
+                          height: 180,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              Container(
+                                height: 180,
+                                width: double.infinity,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: AppColors.info.withOpacity(0.08),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: AppColors.info.withOpacity(0.25),
+                                  ),
+                                ),
+                                child: const Text('Photo preview unavailable'),
+                              ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     _buildAnimatedField(
                       fieldKey: 'height',
                       child: TextFormField(

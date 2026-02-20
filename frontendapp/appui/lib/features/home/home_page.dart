@@ -1,7 +1,8 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/constants/app_constants.dart';
-import '../../widgets/glass_card.dart';
 import '../../widgets/urgency_badge.dart';
 import '../../models/missing_person.dart';
 
@@ -18,6 +19,7 @@ class _HomePageState extends State<HomePage>
   late Animation<double> _fadeAnimation;
   double _geoAlertRadius = 2.0;
   bool _geoAlertEnabled = false;
+  String _searchQuery = '';
 
   // dynamic monitoring state
   List<MissingPerson> _urgentCases = [];
@@ -49,8 +51,20 @@ class _HomePageState extends State<HomePage>
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final urgentCases = _urgentCases;
+    final urgentCases = _urgentCases.where((caseItem) {
+      if (_searchQuery.trim().isEmpty) return true;
+      final query = _searchQuery.toLowerCase();
+      return caseItem.name.toLowerCase().contains(query) ||
+          caseItem.lastSeenLocation.toLowerCase().contains(query);
+    }).toList()..sort(_compareCasePriority);
+
+    final prioritizedPosts = _feedPosts.where((caseItem) {
+      if (_searchQuery.trim().isEmpty) return true;
+      final query = _searchQuery.toLowerCase();
+      return caseItem.name.toLowerCase().contains(query) ||
+          caseItem.lastSeenLocation.toLowerCase().contains(query) ||
+          caseItem.description.toLowerCase().contains(query);
+    }).toList()..sort(_compareCasePriority);
 
     return Scaffold(
       drawer: _buildSideNavBar(context),
@@ -149,9 +163,11 @@ class _HomePageState extends State<HomePage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (_geoAlertEnabled) _buildGeoAlertBanner(),
+                    _buildSearchBar(),
+                    const SizedBox(height: 24),
                     _buildUrgentCasesSection(urgentCases),
                     const SizedBox(height: 32),
-                    _buildQuickActionsSection(context),
+                    _buildMissingPostsSection(prioritizedPosts),
                     const SizedBox(height: 32),
                     _buildCommunityImpactPanel(),
                     const SizedBox(height: 32),
@@ -182,6 +198,36 @@ class _HomePageState extends State<HomePage>
         icon: const Icon(Icons.add),
         label: const Text('Report Missing'),
         tooltip: 'Report a missing person',
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return TextField(
+      onChanged: (value) {
+        setState(() {
+          _searchQuery = value;
+        });
+      },
+      decoration: InputDecoration(
+        hintText: 'Search by name or location',
+        prefixIcon: const Icon(Icons.search),
+        filled: true,
+        fillColor: Theme.of(context).brightness == Brightness.dark
+            ? Colors.white.withOpacity(0.06)
+            : Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.primary.withOpacity(0.2)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.primary.withOpacity(0.2)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.primary, width: 1.5),
+        ),
       ),
     );
   }
@@ -248,7 +294,6 @@ class _HomePageState extends State<HomePage>
   }
 
   Widget _buildSideNavBar(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Drawer(
       child: ListView(
         padding: EdgeInsets.zero,
@@ -263,7 +308,9 @@ class _HomePageState extends State<HomePage>
             ),
             child: DrawerHeader(
               decoration: const BoxDecoration(color: Colors.transparent),
+              margin: EdgeInsets.zero,
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Container(
@@ -273,30 +320,30 @@ class _HomePageState extends State<HomePage>
                       shape: BoxShape.circle,
                     ),
                     child: CircleAvatar(
-                      radius: 40,
+                      radius: 32,
                       backgroundColor: Colors.white,
                       child: Icon(
                         Icons.person,
-                        size: 40,
+                        size: 32,
                         color: AppColors.primary,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   Text(
                     'ResQLink',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 20,
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   Text(
                     'Your Safety Network',
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.8),
-                      fontSize: 12,
+                      fontSize: 11,
                     ),
                   ),
                 ],
@@ -534,7 +581,37 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  Widget _buildUrgentCasesSection(List<dynamic> urgentCases) {
+  int _urgencyRank(UrgencyLevel urgency) {
+    switch (urgency) {
+      case UrgencyLevel.critical:
+        return 0;
+      case UrgencyLevel.high:
+        return 1;
+      case UrgencyLevel.normal:
+        return 2;
+    }
+  }
+
+  int _compareCasePriority(MissingPerson a, MissingPerson b) {
+    final urgencyCompare = _urgencyRank(
+      a.urgency,
+    ).compareTo(_urgencyRank(b.urgency));
+    if (urgencyCompare != 0) return urgencyCompare;
+    return b.lastSeenTime.compareTo(a.lastSeenTime);
+  }
+
+  String _timeSinceMissing(DateTime lastSeenTime) {
+    final duration = DateTime.now().difference(lastSeenTime);
+    if (duration.inMinutes < 60) {
+      return '${math.max(duration.inMinutes, 1)} min ago';
+    }
+    if (duration.inHours < 24) {
+      return '${duration.inHours} hr ago';
+    }
+    return '${duration.inDays} day${duration.inDays == 1 ? '' : 's'} ago';
+  }
+
+  Widget _buildUrgentCasesSection(List<MissingPerson> urgentCases) {
     // show a red banner if any case is marked critical
     final hasCritical = urgentCases.any((c) {
       try {
@@ -618,97 +695,176 @@ class _HomePageState extends State<HomePage>
                 ),
               ],
             ),
-          ),
+          )
+        else
+          ...urgentCases
+              .take(3)
+              .map(
+                (caseItem) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _buildMissingPostCard(caseItem),
+                ),
+              ),
       ],
     );
   }
 
-  Widget _buildQuickActionsSection(BuildContext context) {
+  Widget _buildMissingPostsSection(List<MissingPerson> posts) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Quick Actions',
+          'Latest Missing Reports',
           style: TextStyle(
-            fontSize: 18,
+            fontSize: 20,
             fontWeight: FontWeight.bold,
             color: Theme.of(context).brightness == Brightness.dark
                 ? Colors.white
                 : AppColors.primary,
           ),
         ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _buildActionCard(
-                icon: Icons.add_circle,
-                title: 'Report\nMissing',
-                color: AppColors.accent,
-                onTap: () {
-                  Navigator.pushNamed(context, AppConstants.routeReportMissing);
-                },
-              ),
+        const SizedBox(height: 12),
+        if (posts.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.info.withOpacity(0.08),
+              border: Border.all(color: AppColors.info.withOpacity(0.25)),
+              borderRadius: BorderRadius.circular(12),
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: _buildActionCard(
-                icon: Icons.smart_toy_outlined,
-                title: 'AI\nAssistant',
-                color: AppColors.info,
-                onTap: () {
-                  Navigator.pushNamed(context, AppConstants.routeAIChat);
-                },
-              ),
+            child: Text(
+              'No reports available yet. Post a missing person to see it here.',
+              style: TextStyle(color: AppColors.textSecondary),
             ),
-          ],
-        ),
+          )
+        else
+          ...posts.map(
+            (post) => Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: _buildMissingPostCard(post),
+            ),
+          ),
       ],
     );
   }
 
-  Widget _buildActionCard({
-    required IconData icon,
-    required String title,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [color.withOpacity(0.1), color.withOpacity(0.05)],
+  Widget _buildMissingPostCard(MissingPerson post) {
+    final photoPath = post.photoUrl.trim();
+    final isUrlLike =
+        photoPath.startsWith('http') ||
+        photoPath.startsWith('blob:') ||
+        photoPath.startsWith('data:') ||
+        photoPath.startsWith('file:');
+    final resolvedPhotoPath = isUrlLike || photoPath.isEmpty
+        ? photoPath
+        : 'file://$photoPath';
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.dark
+            ? Colors.white.withOpacity(0.04)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.primary.withOpacity(0.12)),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withOpacity(0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
-          border: Border.all(color: color.withOpacity(0.3)),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: color.withOpacity(0.1),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(16),
+              topRight: Radius.circular(16),
             ),
-          ],
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.15),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: color, size: 32),
+            child: AspectRatio(
+              aspectRatio: 4 / 3,
+              child: resolvedPhotoPath.isNotEmpty
+                  ? Image.network(
+                      resolvedPhotoPath,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) =>
+                          _buildPhotoPlaceholder(),
+                    )
+                  : _buildPhotoPlaceholder(),
             ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        post.name,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    UrgencyBadge(urgency: post.urgency, compact: true),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(Icons.access_time, size: 16),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Missing: ${_timeSinceMissing(post.lastSeenTime)}',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(Icons.location_on_outlined, size: 16),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        post.lastSeenLocation,
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  post.description.isEmpty
+                      ? 'No additional information provided.'
+                      : post.description,
+                  style: const TextStyle(height: 1.35),
+                ),
+              ],
             ),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPhotoPlaceholder() {
+    return Container(
+      color: AppColors.primary.withOpacity(0.08),
+      child: Center(
+        child: Icon(
+          Icons.person_search,
+          size: 64,
+          color: AppColors.primary.withOpacity(0.55),
         ),
       ),
     );
