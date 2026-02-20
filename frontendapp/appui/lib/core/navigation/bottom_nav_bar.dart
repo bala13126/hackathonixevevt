@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../features/home/home_page.dart';
 import '../../features/cases/cases_screen.dart';
 import '../../features/ai_chat/ai_chat_screen.dart';
-import '../../features/notifications/notifications_screen.dart';
 import '../../features/profile/profile_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
@@ -19,17 +18,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     const HomePage(),
     const CasesScreen(),
     const AIChatScreen(),
-    const NotificationsScreen(),
     const ProfileScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
+      body: IndexedStack(index: _currentIndex, children: _screens),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) {
@@ -53,11 +48,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             icon: Icon(Icons.auto_awesome_outlined),
             activeIcon: Icon(Icons.auto_awesome),
             label: 'AI Assistant',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.notifications_outlined),
-            activeIcon: Icon(Icons.notifications),
-            label: 'Notifications',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_outline),

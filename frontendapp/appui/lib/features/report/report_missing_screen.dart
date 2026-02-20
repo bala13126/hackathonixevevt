@@ -139,7 +139,8 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
     await _pulseField('time');
 
     await Future.delayed(const Duration(milliseconds: 300));
-    _descriptionController.text = 'Reported by family; last seen outside the mall';
+    _descriptionController.text =
+        'Reported by family; last seen outside the mall';
     await _pulseField('description');
 
     await Future.delayed(const Duration(milliseconds: 300));
@@ -175,7 +176,30 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
           backgroundColor: AppColors.success,
         ),
       );
-      Navigator.pop(context);
+
+      // construct a simple MissingPerson object to pass back
+      final newCase = MissingPerson(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        name: _nameController.text,
+        age: int.tryParse(_ageController.text) ?? 0,
+        photoUrl: '',
+        lastSeenLocation: _lastSeenLocationController.text,
+        lastSeenTime: DateTime.now(),
+        distanceKm: 0.0,
+        urgency: UrgencyLevel.high,
+        isVerified: false,
+        description: _descriptionController.text,
+        height: double.tryParse(_heightController.text) ?? 0,
+        hairColor: _hairColorController.text,
+        eyeColor: _eyeColorController.text,
+        clothing: _clothingController.text,
+        contactName: _contactNameController.text,
+        contactPhone: _contactPhoneController.text,
+        privacyLevel: _selectedPrivacy,
+        status: CaseStatus.submitted,
+      );
+
+      Navigator.pop(context, newCase);
     }
   }
 
@@ -202,7 +226,7 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return SecureScreen(
-      showBanner: true,
+      showBanner: false,
       child: Scaffold(
         backgroundColor: AppColors.background,
         appBar: AppBar(
@@ -211,7 +235,9 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
           actions: [
             IconButton(
               tooltip: 'Voice Auto Fill',
-              onPressed: _isVoiceFilling || _isAutoFilling ? null : _autoFillWithVoice,
+              onPressed: _isVoiceFilling || _isAutoFilling
+                  ? null
+                  : _autoFillWithVoice,
               icon: _isVoiceFilling
                   ? const SizedBox(
                       width: 16,
@@ -221,7 +247,9 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
                   : const Icon(Icons.mic_none),
             ),
             TextButton.icon(
-              onPressed: _isAutoFilling || _isVoiceFilling ? null : _autoFillWithAI,
+              onPressed: _isAutoFilling || _isVoiceFilling
+                  ? null
+                  : _autoFillWithAI,
               icon: _isAutoFilling
                   ? const SizedBox(
                       width: 16,
@@ -260,193 +288,222 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
               );
             },
             steps: [
-            Step(
-              title: const Text('Basic Info'),
-              isActive: _currentStep >= 0,
-              content: Column(
-                children: [
-                  _buildAnimatedField(
-                    fieldKey: 'name',
-                    child: TextFormField(
-                      controller: _nameController,
-                      decoration: const InputDecoration(labelText: 'Full Name'),
-                      validator: (value) => value == null || value.isEmpty
-                          ? 'Name is required'
-                          : null,
+              Step(
+                title: const Text('Basic Info'),
+                isActive: _currentStep >= 0,
+                content: Column(
+                  children: [
+                    _buildAnimatedField(
+                      fieldKey: 'name',
+                      child: TextFormField(
+                        controller: _nameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Full Name',
+                        ),
+                        validator: (value) => value == null || value.isEmpty
+                            ? 'Name is required'
+                            : null,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildAnimatedField(
-                    fieldKey: 'age',
-                    child: TextFormField(
-                      controller: _ageController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Age'),
-                      validator: (value) => value == null || value.isEmpty
-                          ? 'Age is required'
-                          : null,
+                    const SizedBox(height: 12),
+                    _buildAnimatedField(
+                      fieldKey: 'age',
+                      child: TextFormField(
+                        controller: _ageController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Age'),
+                        validator: (value) => value == null || value.isEmpty
+                            ? 'Age is required'
+                            : null,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildAnimatedField(
-                    fieldKey: 'gender',
-                    child: DropdownButtonFormField<String>(
-                      value: _selectedGender,
-                      items: const [
-                        DropdownMenuItem(value: 'Female', child: Text('Female')),
-                        DropdownMenuItem(value: 'Male', child: Text('Male')),
-                        DropdownMenuItem(value: 'Other', child: Text('Other')),
-                      ],
-                      onChanged: (value) {
-                        if (value != null) {
-                          setState(() => _selectedGender = value);
-                        }
-                      },
-                      decoration: const InputDecoration(labelText: 'Gender'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Step(
-              title: const Text('Appearance'),
-              isActive: _currentStep >= 1,
-              content: Column(
-                children: [
-                  _buildAnimatedField(
-                    fieldKey: 'height',
-                    child: TextFormField(
-                      controller: _heightController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Height (cm)'),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildAnimatedField(
-                    fieldKey: 'hair',
-                    child: TextFormField(
-                      controller: _hairColorController,
-                      decoration: const InputDecoration(labelText: 'Hair Color'),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildAnimatedField(
-                    fieldKey: 'eye',
-                    child: TextFormField(
-                      controller: _eyeColorController,
-                      decoration: const InputDecoration(labelText: 'Eye Color'),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildAnimatedField(
-                    fieldKey: 'clothing',
-                    child: TextFormField(
-                      controller: _clothingController,
-                      decoration: const InputDecoration(labelText: 'Clothing'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Step(
-              title: const Text('Last Seen'),
-              isActive: _currentStep >= 2,
-              content: Column(
-                children: [
-                  _buildAnimatedField(
-                    fieldKey: 'location',
-                    child: TextFormField(
-                      controller: _lastSeenLocationController,
-                      decoration: const InputDecoration(labelText: 'Last Seen Location'),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildAnimatedField(
-                    fieldKey: 'time',
-                    child: TextFormField(
-                      controller: _lastSeenTimeController,
-                      decoration: const InputDecoration(labelText: 'Last Seen Time'),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildAnimatedField(
-                    fieldKey: 'description',
-                    child: TextFormField(
-                      controller: _descriptionController,
-                      maxLines: 3,
-                      decoration: const InputDecoration(labelText: 'Additional Details'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Step(
-              title: const Text('Contact'),
-              isActive: _currentStep >= 3,
-              content: Column(
-                children: [
-                  _buildAnimatedField(
-                    fieldKey: 'contactName',
-                    child: TextFormField(
-                      controller: _contactNameController,
-                      decoration: const InputDecoration(labelText: 'Contact Name'),
-                      validator: (value) => value == null || value.isEmpty
-                          ? 'Contact name is required'
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildAnimatedField(
-                    fieldKey: 'contactPhone',
-                    child: TextFormField(
-                      controller: _contactPhoneController,
-                      keyboardType: TextInputType.phone,
-                      decoration: const InputDecoration(labelText: 'Contact Phone'),
-                      validator: (value) => value == null || value.isEmpty
-                          ? 'Contact phone is required'
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Privacy Level', style: TextStyle(fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: RadioListTile<PrivacyLevel>(
-                              value: PrivacyLevel.public,
-                              groupValue: _selectedPrivacy,
-                              onChanged: (value) {
-                                if (value != null) {
-                                  setState(() => _selectedPrivacy = value);
-                                }
-                              },
-                              title: const Text('Public'),
-                            ),
+                    const SizedBox(height: 12),
+                    _buildAnimatedField(
+                      fieldKey: 'gender',
+                      child: DropdownButtonFormField<String>(
+                        value: _selectedGender,
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'Female',
+                            child: Text('Female'),
                           ),
-                          Expanded(
-                            child: RadioListTile<PrivacyLevel>(
-                              value: PrivacyLevel.protected,
-                              groupValue: _selectedPrivacy,
-                              onChanged: (value) {
-                                if (value != null) {
-                                  setState(() => _selectedPrivacy = value);
-                                }
-                              },
-                              title: const Text('Protected'),
-                            ),
+                          DropdownMenuItem(value: 'Male', child: Text('Male')),
+                          DropdownMenuItem(
+                            value: 'Other',
+                            child: Text('Other'),
                           ),
                         ],
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() => _selectedGender = value);
+                          }
+                        },
+                        decoration: const InputDecoration(labelText: 'Gender'),
                       ),
-                    ],
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              Step(
+                title: const Text('Appearance'),
+                isActive: _currentStep >= 1,
+                content: Column(
+                  children: [
+                    _buildAnimatedField(
+                      fieldKey: 'height',
+                      child: TextFormField(
+                        controller: _heightController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Height (cm)',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildAnimatedField(
+                      fieldKey: 'hair',
+                      child: TextFormField(
+                        controller: _hairColorController,
+                        decoration: const InputDecoration(
+                          labelText: 'Hair Color',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildAnimatedField(
+                      fieldKey: 'eye',
+                      child: TextFormField(
+                        controller: _eyeColorController,
+                        decoration: const InputDecoration(
+                          labelText: 'Eye Color',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildAnimatedField(
+                      fieldKey: 'clothing',
+                      child: TextFormField(
+                        controller: _clothingController,
+                        decoration: const InputDecoration(
+                          labelText: 'Clothing',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Step(
+                title: const Text('Last Seen'),
+                isActive: _currentStep >= 2,
+                content: Column(
+                  children: [
+                    _buildAnimatedField(
+                      fieldKey: 'location',
+                      child: TextFormField(
+                        controller: _lastSeenLocationController,
+                        decoration: const InputDecoration(
+                          labelText: 'Last Seen Location',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildAnimatedField(
+                      fieldKey: 'time',
+                      child: TextFormField(
+                        controller: _lastSeenTimeController,
+                        decoration: const InputDecoration(
+                          labelText: 'Last Seen Time',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildAnimatedField(
+                      fieldKey: 'description',
+                      child: TextFormField(
+                        controller: _descriptionController,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                          labelText: 'Additional Details',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Step(
+                title: const Text('Contact'),
+                isActive: _currentStep >= 3,
+                content: Column(
+                  children: [
+                    _buildAnimatedField(
+                      fieldKey: 'contactName',
+                      child: TextFormField(
+                        controller: _contactNameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Contact Name',
+                        ),
+                        validator: (value) => value == null || value.isEmpty
+                            ? 'Contact name is required'
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildAnimatedField(
+                      fieldKey: 'contactPhone',
+                      child: TextFormField(
+                        controller: _contactPhoneController,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(
+                          labelText: 'Contact Phone',
+                        ),
+                        validator: (value) => value == null || value.isEmpty
+                            ? 'Contact phone is required'
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Privacy Level',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: RadioListTile<PrivacyLevel>(
+                                value: PrivacyLevel.public,
+                                groupValue: _selectedPrivacy,
+                                onChanged: (value) {
+                                  if (value != null) {
+                                    setState(() => _selectedPrivacy = value);
+                                  }
+                                },
+                                title: const Text('Public'),
+                              ),
+                            ),
+                            Expanded(
+                              child: RadioListTile<PrivacyLevel>(
+                                value: PrivacyLevel.protected,
+                                groupValue: _selectedPrivacy,
+                                onChanged: (value) {
+                                  if (value != null) {
+                                    setState(() => _selectedPrivacy = value);
+                                  }
+                                },
+                                title: const Text('Protected'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),

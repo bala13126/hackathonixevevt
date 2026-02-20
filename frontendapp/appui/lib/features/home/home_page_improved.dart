@@ -19,14 +19,6 @@ class _HomePageState extends State<HomePage>
   double _geoAlertRadius = 2.0;
   bool _geoAlertEnabled = false;
 
-  // dynamic monitoring state
-  List<MissingPerson> _urgentCases = [];
-  List<MissingPerson> _feedPosts = [];
-  int _casesFound = 0;
-  int _tipsSubmitted = 0;
-  int _activeUsers = 0;
-  int _activeSearches = 0;
-
   @override
   void initState() {
     super.initState();
@@ -50,7 +42,7 @@ class _HomePageState extends State<HomePage>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final urgentCases = _urgentCases;
+    final urgentCases = const [];
 
     return Scaffold(
       drawer: _buildSideNavBar(context),
@@ -59,7 +51,7 @@ class _HomePageState extends State<HomePage>
         child: CustomScrollView(
           slivers: [
             SliverAppBar(
-              expandedHeight: 148,
+              expandedHeight: 160,
               floating: false,
               pinned: true,
               backgroundColor: AppColors.primary,
@@ -73,7 +65,7 @@ class _HomePageState extends State<HomePage>
               ),
               flexibleSpace: FlexibleSpaceBar(
                 background: Container(
-                  padding: const EdgeInsets.only(top: 36, left: 24, right: 24),
+                  padding: const EdgeInsets.only(top: 60, left: 24, right: 24),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
@@ -164,20 +156,8 @@ class _HomePageState extends State<HomePage>
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          final result = await Navigator.pushNamed(
-            context,
-            AppConstants.routeReportMissing,
-          );
-          if (result is MissingPerson) {
-            setState(() {
-              _urgentCases.insert(0, result);
-              _feedPosts.insert(0, result);
-              _casesFound++;
-              _activeUsers++;
-              _activeSearches++;
-            });
-          }
+        onPressed: () {
+          Navigator.pushNamed(context, AppConstants.routeReportMissing);
         },
         icon: const Icon(Icons.add),
         label: const Text('Report Missing'),
@@ -311,21 +291,9 @@ class _HomePageState extends State<HomePage>
           _buildDrawerMenuItem(
             icon: Icons.report,
             title: 'Report Missing',
-            onTap: () async {
+            onTap: () {
               Navigator.pop(context);
-              final result = await Navigator.pushNamed(
-                context,
-                AppConstants.routeReportMissing,
-              );
-              if (result is MissingPerson) {
-                setState(() {
-                  _urgentCases.insert(0, result);
-                  _feedPosts.insert(0, result);
-                  _casesFound++;
-                  _activeUsers++;
-                  _activeSearches++;
-                });
-              }
+              Navigator.pushNamed(context, AppConstants.routeReportMissing);
             },
           ),
           _buildDrawerMenuItem(
@@ -535,44 +503,9 @@ class _HomePageState extends State<HomePage>
   }
 
   Widget _buildUrgentCasesSection(List<dynamic> urgentCases) {
-    // show a red banner if any case is marked critical
-    final hasCritical = urgentCases.any((c) {
-      try {
-        return c.urgency == UrgencyLevel.critical;
-      } catch (_) {
-        return false;
-      }
-    });
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (hasCritical)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            margin: const EdgeInsets.only(bottom: 16),
-            decoration: BoxDecoration(
-              color: AppColors.error.withOpacity(0.1),
-              border: Border.all(color: AppColors.error),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: const [
-                Icon(Icons.warning_amber_rounded, color: AppColors.error),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Critical alert! Please review urgent cases immediately.',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.error,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -758,9 +691,9 @@ class _HomePageState extends State<HomePage>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildImpactStat('$_casesFound', 'Cases Found'),
-              _buildImpactStat('$_tipsSubmitted', 'Tips Submitted'),
-              _buildImpactStat('$_activeUsers', 'Active Users'),
+              _buildImpactStat('24', 'Cases Found'),
+              _buildImpactStat('156', 'Tips Submitted'),
+              _buildImpactStat('892', 'Active Users'),
             ],
           ),
         ],
@@ -833,7 +766,7 @@ class _HomePageState extends State<HomePage>
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '$_activeSearches active searches in your region',
+                  '12 active searches in your region',
                   style: TextStyle(
                     fontSize: 12,
                     color: AppColors.textSecondary,
