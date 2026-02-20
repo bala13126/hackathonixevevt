@@ -8,7 +8,6 @@ import 'features/splash/splash_screen.dart';
 import 'features/auth/login_page.dart';
 import 'features/auth/signup_page.dart';
 import 'features/location/location_permission_screen.dart';
-import 'features/home/home_page.dart';
 import 'features/ai_chat/ai_chat_screen.dart';
 import 'features/report/report_missing_screen.dart';
 import 'features/case_feed/case_feed_screen.dart';

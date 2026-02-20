@@ -57,7 +57,11 @@ class _HomePageState extends State<HomePage>
       final apiCases = await BackendApiService.fetchCases();
       if (!mounted) return;
       setState(() {
-        _urgentCases = apiCases;
+        // Separate cases by urgency: high/critical go to urgent, others to feed
+        _urgentCases = apiCases
+            .where((c) => c.urgency == UrgencyLevel.high || c.urgency == UrgencyLevel.critical)
+            .toList();
+        // Feed shows all cases but prioritizes recent ones
         _feedPosts = apiCases;
       });
     } catch (error) {
@@ -754,6 +758,11 @@ class _HomePageState extends State<HomePage>
   }
 
   Widget _buildMissingPostsSection(List<MissingPerson> posts) {
+    // Filter out urgent cases to avoid duplication with urgentCasesSection
+    final nonUrgentPosts = posts
+        .where((p) => p.urgency != UrgencyLevel.high && p.urgency != UrgencyLevel.critical)
+        .toList();
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -768,7 +777,7 @@ class _HomePageState extends State<HomePage>
           ),
         ),
         const SizedBox(height: 12),
-        if (posts.isEmpty)
+        if (nonUrgentPosts.isEmpty)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -783,7 +792,7 @@ class _HomePageState extends State<HomePage>
             ),
           )
         else
-          ...posts.map(
+          ...nonUrgentPosts.map(
             (post) => Padding(
               padding: const EdgeInsets.only(bottom: 16),
               child: _buildMissingPostCard(post),

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/constants/app_constants.dart';
 import '../../core/services/backend_api_service.dart';
 import '../../widgets/phone_input.dart';
 import '../../widgets/password_strength_indicator.dart';

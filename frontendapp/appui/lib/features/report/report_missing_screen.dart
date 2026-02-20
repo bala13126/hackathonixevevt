@@ -230,7 +230,7 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
           place.locality,
           place.administrativeArea,
           place.country,
-        ].where((part) => part != null && part!.trim().isNotEmpty);
+        ].where((part) => part != null && part.trim().isNotEmpty);
         location = parts.map((part) => part!.trim()).join(', ');
       }
 
