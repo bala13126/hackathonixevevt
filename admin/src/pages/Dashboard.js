@@ -11,7 +11,7 @@ import {
   PointElement,
   LineElement,
 } from 'chart.js';
-import { Bar, Pie } from 'react-chartjs-2';
+import { Bar, Doughnut } from 'react-chartjs-2';
 import { FiGrid, FiCheckSquare, FiMessageSquare, FiBarChart2, FiAward, FiLoader, FiActivity, FiClock, FiAlertCircle, FiTrendingUp } from 'react-icons/fi';
 import './Dashboard.css';
 
@@ -106,7 +106,8 @@ const Dashboard = () => {
         cases.filter(c => c.urgency === 'Medium').length,
         cases.filter(c => c.urgency === 'Low').length,
       ],
-      backgroundColor: ['#ff4d4d', '#ffad33', '#33cc33'],
+      backgroundColor: ['#f56565', '#ed8936', '#48bb78'],
+      hoverOffset: 4,
     }]
   }), [cases]);
 
@@ -255,7 +256,15 @@ const Dashboard = () => {
       <div className="chart-card">
         <h3><FiAlertCircle /> Urgency Distribution</h3>
         <div className="chart-wrapper">
-            <Pie data={urgencyData} />
+            <Doughnut 
+              data={urgencyData} 
+              options={{ 
+                maintainAspectRatio: false, 
+                plugins: { 
+                  legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20 } } 
+                } 
+              }} 
+            />
         </div>
       </div>
       <div className="chart-card">
