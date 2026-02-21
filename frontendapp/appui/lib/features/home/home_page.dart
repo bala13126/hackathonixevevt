@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/services/backend_api_service.dart';
 import '../../widgets/urgency_badge.dart';
 import '../../models/missing_person.dart';
 
@@ -20,6 +21,8 @@ class _HomePageState extends State<HomePage>
   double _geoAlertRadius = 2.0;
   bool _geoAlertEnabled = false;
   String _searchQuery = '';
+  bool _isLoadingCases = true;
+  String? _casesLoadError;
 
   // dynamic monitoring state
   List<MissingPerson> _urgentCases = [];
@@ -41,6 +44,38 @@ class _HomePageState extends State<HomePage>
       curve: Curves.easeOut,
     );
     _animationController.forward();
+    _loadCases();
+  }
+
+  Future<void> _loadCases() async {
+    setState(() {
+      _isLoadingCases = true;
+      _casesLoadError = null;
+    });
+
+    try {
+      final apiCases = await BackendApiService.fetchCases();
+      if (!mounted) return;
+      setState(() {
+        // Separate cases by urgency: high/critical go to urgent, others to feed
+        _urgentCases = apiCases
+            .where((c) => c.urgency == UrgencyLevel.high || c.urgency == UrgencyLevel.critical)
+            .toList();
+        // Feed shows all cases but prioritizes recent ones
+        _feedPosts = apiCases;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _casesLoadError = error.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingCases = false;
+        });
+      }
+    }
   }
 
   @override
@@ -163,6 +198,19 @@ class _HomePageState extends State<HomePage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (_geoAlertEnabled) _buildGeoAlertBanner(),
+                    if (_isLoadingCases)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 16),
+                        child: LinearProgressIndicator(),
+                      ),
+                    if (_casesLoadError != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Text(
+                          'Unable to load cases: $_casesLoadError',
+                          style: const TextStyle(color: AppColors.error),
+                        ),
+                      ),
                     _buildSearchBar(),
                     const SizedBox(height: 24),
                     _buildUrgentCasesSection(urgentCases),
@@ -710,6 +758,11 @@ class _HomePageState extends State<HomePage>
   }
 
   Widget _buildMissingPostsSection(List<MissingPerson> posts) {
+    // Filter out urgent cases to avoid duplication with urgentCasesSection
+    final nonUrgentPosts = posts
+        .where((p) => p.urgency != UrgencyLevel.high && p.urgency != UrgencyLevel.critical)
+        .toList();
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -724,7 +777,7 @@ class _HomePageState extends State<HomePage>
           ),
         ),
         const SizedBox(height: 12),
-        if (posts.isEmpty)
+        if (nonUrgentPosts.isEmpty)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -739,7 +792,7 @@ class _HomePageState extends State<HomePage>
             ),
           )
         else
-          ...posts.map(
+          ...nonUrgentPosts.map(
             (post) => Padding(
               padding: const EdgeInsets.only(bottom: 16),
               child: _buildMissingPostCard(post),
@@ -760,99 +813,127 @@ class _HomePageState extends State<HomePage>
         ? photoPath
         : 'file://$photoPath';
 
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Theme.of(context).brightness == Brightness.dark
-            ? Colors.white.withOpacity(0.04)
-            : Colors.white,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.primary.withOpacity(0.12)),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.06),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
+        onTap: () {
+          Navigator.pushNamed(
+            context,
+            AppConstants.routeCaseDetail,
+            arguments: post,
+          );
+        },
+        child: Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? Colors.white.withOpacity(0.04)
+                : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.primary.withOpacity(0.12)),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withOpacity(0.06),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ClipRRect(
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(16),
-              topRight: Radius.circular(16),
-            ),
-            child: AspectRatio(
-              aspectRatio: 4 / 3,
-              child: resolvedPhotoPath.isNotEmpty
-                  ? Image.network(
-                      resolvedPhotoPath,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) =>
-                          _buildPhotoPlaceholder(),
-                    )
-                  : _buildPhotoPlaceholder(),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  topRight: Radius.circular(16),
+                ),
+                child: AspectRatio(
+                  aspectRatio: 4 / 3,
+                  child: resolvedPhotoPath.isNotEmpty
+                      ? Image.network(
+                          resolvedPhotoPath,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              _buildPhotoPlaceholder(),
+                        )
+                      : _buildPhotoPlaceholder(),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(
-                        post.name,
-                        style: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            post.name,
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ),
-                      ),
+                        UrgencyBadge(urgency: post.urgency, compact: true),
+                      ],
                     ),
-                    UrgencyBadge(urgency: post.urgency, compact: true),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(Icons.access_time, size: 16),
-                    const SizedBox(width: 6),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(Icons.access_time, size: 16),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Missing: ${_timeSinceMissing(post.lastSeenTime)}',
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on_outlined, size: 16),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            post.lastSeenLocation,
+                            style: TextStyle(color: AppColors.textSecondary),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
                     Text(
-                      'Missing: ${_timeSinceMissing(post.lastSeenTime)}',
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w600,
+                      post.description.isEmpty
+                          ? 'No additional information provided.'
+                          : post.description,
+                      style: const TextStyle(height: 1.35),
+                    ),
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () {
+                          Navigator.pushNamed(
+                            context,
+                            AppConstants.routeSubmitTip,
+                            arguments: post.id,
+                          );
+                        },
+                        icon: const Icon(Icons.visibility),
+                        label: const Text('Found Missing Person'),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(Icons.location_on_outlined, size: 16),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        post.lastSeenLocation,
-                        style: TextStyle(color: AppColors.textSecondary),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  post.description.isEmpty
-                      ? 'No additional information provided.'
-                      : post.description,
-                  style: const TextStyle(height: 1.35),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

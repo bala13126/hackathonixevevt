@@ -1,6 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/services/backend_api_service.dart';
 import '../../models/missing_person.dart';
 import '../../widgets/secure_screen.dart';
 
@@ -28,7 +34,7 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
 
   int _currentStep = 0;
   bool _isAutoFilling = false;
-  bool _isVoiceFilling = false;
+  bool _isSubmitting = false;
   XFile? _selectedPhoto;
   PrivacyLevel _selectedPrivacy = PrivacyLevel.protected;
   String _selectedGender = 'Female';
@@ -51,112 +57,130 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
   }
 
   Future<void> _autoFillWithAI() async {
+    if (_isAutoFilling) return;
     setState(() {
       _isAutoFilling = true;
     });
 
-    await Future.delayed(const Duration(milliseconds: 400));
-    _nameController.text = 'Ananya Mehta';
-    await _pulseField('name');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('latest_voice_details');
+      final latestText = prefs.getString('latest_voice_text') ?? '';
+      if ((raw == null || raw.trim().isEmpty) && latestText.trim().isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No AI assistant details found yet.'),
+            ),
+          );
+        }
+        return;
+      }
 
-    await Future.delayed(const Duration(milliseconds: 300));
-    _ageController.text = '26';
-    await _pulseField('age');
-
-    await Future.delayed(const Duration(milliseconds: 300));
-    _heightController.text = '168';
-    await _pulseField('height');
-
-    await Future.delayed(const Duration(milliseconds: 300));
-    _hairColorController.text = 'Black';
-    await _pulseField('hair');
-
-    await Future.delayed(const Duration(milliseconds: 300));
-    _eyeColorController.text = 'Brown';
-    await _pulseField('eye');
-
-    await Future.delayed(const Duration(milliseconds: 300));
-    _clothingController.text = 'Navy jacket, blue jeans';
-    await _pulseField('clothing');
-
-    await Future.delayed(const Duration(milliseconds: 300));
-    _lastSeenLocationController.text = 'Andheri Station, Mumbai';
-    await _pulseField('location');
-
-    await Future.delayed(const Duration(milliseconds: 300));
-    _lastSeenTimeController.text = 'Feb 19, 7:45 PM';
-    await _pulseField('time');
-
-    await Future.delayed(const Duration(milliseconds: 300));
-    _descriptionController.text = 'Last seen near the ticket counter';
-    await _pulseField('description');
-
-    await Future.delayed(const Duration(milliseconds: 300));
-    _contactNameController.text = 'Rahul Mehta';
-    await _pulseField('contactName');
-
-    await Future.delayed(const Duration(milliseconds: 300));
-    _contactPhoneController.text = '9876543210';
-    await _pulseField('contactPhone');
-
-    setState(() {
-      _isAutoFilling = false;
-    });
+      final decoded = raw == null || raw.trim().isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        if ((decoded['description'] ?? '').toString().trim().isEmpty &&
+            latestText.trim().isNotEmpty) {
+          decoded['description'] = latestText.trim();
+        }
+        await _applyParsedFields(decoded);
+        if (_lastSeenLocationController.text.trim().isEmpty) {
+          await _fillLocationFromDevice();
+        }
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Auto fill failed: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAutoFilling = false;
+        });
+      }
+    }
   }
 
-  Future<void> _autoFillWithVoice() async {
-    setState(() {
-      _isVoiceFilling = true;
-    });
+  Future<void> _applyParsedFields(Map<String, dynamic> parsed) async {
+    final name = (parsed['name'] ?? '').toString();
+    if (name.isNotEmpty) {
+      _nameController.text = name;
+      await _pulseField('name');
+    }
 
-    await Future.delayed(const Duration(milliseconds: 400));
-    _nameController.text = 'Karan Shah';
-    await _pulseField('name');
+    final age = (parsed['age'] ?? '').toString();
+    if (age.isNotEmpty) {
+      _ageController.text = age;
+      await _pulseField('age');
+    }
 
-    await Future.delayed(const Duration(milliseconds: 300));
-    _ageController.text = '31';
-    await _pulseField('age');
+    final height = (parsed['height'] ?? '').toString();
+    if (height.isNotEmpty) {
+      _heightController.text = height;
+      await _pulseField('height');
+    }
 
-    await Future.delayed(const Duration(milliseconds: 300));
-    _heightController.text = '175';
-    await _pulseField('height');
+    final hair = (parsed['hairColor'] ?? '').toString();
+    if (hair.isNotEmpty) {
+      _hairColorController.text = hair;
+      await _pulseField('hair');
+    }
 
-    await Future.delayed(const Duration(milliseconds: 300));
-    _hairColorController.text = 'Brown';
-    await _pulseField('hair');
+    final eye = (parsed['eyeColor'] ?? '').toString();
+    if (eye.isNotEmpty) {
+      _eyeColorController.text = eye;
+      await _pulseField('eye');
+    }
 
-    await Future.delayed(const Duration(milliseconds: 300));
-    _eyeColorController.text = 'Black';
-    await _pulseField('eye');
+    final clothing = (parsed['clothing'] ?? '').toString();
+    if (clothing.isNotEmpty) {
+      _clothingController.text = clothing;
+      await _pulseField('clothing');
+    }
 
-    await Future.delayed(const Duration(milliseconds: 300));
-    _clothingController.text = 'Grey hoodie, black jeans';
-    await _pulseField('clothing');
+    final location = (parsed['lastSeenLocation'] ?? '').toString();
+    if (location.isNotEmpty) {
+      _lastSeenLocationController.text = location;
+      await _pulseField('location');
+    }
 
-    await Future.delayed(const Duration(milliseconds: 300));
-    _lastSeenLocationController.text = 'Lower Parel, Mumbai';
-    await _pulseField('location');
+    final timeValue = (parsed['lastSeenTime'] ?? '').toString();
+    if (timeValue.isNotEmpty) {
+      _lastSeenTimeController.text = timeValue;
+      await _pulseField('time');
+    }
 
-    await Future.delayed(const Duration(milliseconds: 300));
-    _lastSeenTimeController.text = 'Feb 20, 9:10 AM';
-    await _pulseField('time');
+    final description = (parsed['description'] ?? '').toString();
+    if (description.isNotEmpty) {
+      _descriptionController.text = description;
+      await _pulseField('description');
+    }
 
-    await Future.delayed(const Duration(milliseconds: 300));
-    _descriptionController.text =
-        'Reported by family; last seen outside the mall';
-    await _pulseField('description');
+    final contactName = (parsed['contactName'] ?? '').toString();
+    if (contactName.isNotEmpty) {
+      _contactNameController.text = contactName;
+      await _pulseField('contactName');
+    }
 
-    await Future.delayed(const Duration(milliseconds: 300));
-    _contactNameController.text = 'Neha Shah';
-    await _pulseField('contactName');
+    final contactPhone = (parsed['contactPhone'] ?? '').toString();
+    if (contactPhone.isNotEmpty) {
+      _contactPhoneController.text = contactPhone;
+      await _pulseField('contactPhone');
+    }
 
-    await Future.delayed(const Duration(milliseconds: 300));
-    _contactPhoneController.text = '9123456780';
-    await _pulseField('contactPhone');
-
-    setState(() {
-      _isVoiceFilling = false;
-    });
+    final gender = (parsed['gender'] ?? '').toString();
+    if (gender.isNotEmpty) {
+      setState(() {
+        _selectedGender = gender;
+      });
+      await _pulseField('gender');
+    }
   }
 
   Future<void> _pulseField(String fieldKey) async {
@@ -169,6 +193,60 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
     setState(() {
       _highlightField = null;
     });
+  }
+
+  Future<void> _fillLocationFromDevice() async {
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Location permission is needed to auto-fill location.'),
+            ),
+          );
+        }
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+      );
+      final placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      String location = '';
+      if (placemarks.isNotEmpty) {
+        final place = placemarks.first;
+        final parts = [
+          place.subLocality,
+          place.locality,
+          place.administrativeArea,
+          place.country,
+        ].where((part) => part != null && part.trim().isNotEmpty);
+        location = parts.map((part) => part!.trim()).join(', ');
+      }
+
+      if (location.isEmpty) {
+        location =
+            '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
+      }
+
+      _lastSeenLocationController.text = location;
+      await _pulseField('location');
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to fetch device location.')),
+      );
+    }
   }
 
   Future<void> _pickPhoto(ImageSource source) async {
@@ -219,38 +297,45 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
     );
   }
 
-  void _submitReport() {
-    if (_formKey.currentState!.validate()) {
+  Future<void> _submitReport() async {
+    if (!_formKey.currentState!.validate() || _isSubmitting) return;
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    try {
+      final createdCase = await BackendApiService.createCase(
+        name: _nameController.text.trim(),
+        age: int.tryParse(_ageController.text.trim()) ?? 0,
+        location: _lastSeenLocationController.text.trim(),
+        description: _descriptionController.text.trim(),
+        urgency: UrgencyLevel.high,
+        photo: _selectedPhoto,
+      );
+
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Report submitted successfully'),
           backgroundColor: AppColors.success,
         ),
       );
-
-      // construct a simple MissingPerson object to pass back
-      final newCase = MissingPerson(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        name: _nameController.text,
-        age: int.tryParse(_ageController.text) ?? 0,
-        photoUrl: _selectedPhoto?.path ?? '',
-        lastSeenLocation: _lastSeenLocationController.text,
-        lastSeenTime: DateTime.now(),
-        distanceKm: 0.0,
-        urgency: UrgencyLevel.high,
-        isVerified: false,
-        description: _descriptionController.text,
-        height: double.tryParse(_heightController.text) ?? 0,
-        hairColor: _hairColorController.text,
-        eyeColor: _eyeColorController.text,
-        clothing: _clothingController.text,
-        contactName: _contactNameController.text,
-        contactPhone: _contactPhoneController.text,
-        privacyLevel: _selectedPrivacy,
-        status: CaseStatus.submitted,
+      Navigator.pop(context, createdCase);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to submit report: $error'),
+          backgroundColor: AppColors.error,
+        ),
       );
-
-      Navigator.pop(context, newCase);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
     }
   }
 
@@ -284,23 +369,8 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
           backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
           title: const Text('Report Missing Person'),
           actions: [
-            IconButton(
-              tooltip: 'Voice Auto Fill',
-              onPressed: _isVoiceFilling || _isAutoFilling
-                  ? null
-                  : _autoFillWithVoice,
-              icon: _isVoiceFilling
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.mic_none),
-            ),
             TextButton.icon(
-              onPressed: _isAutoFilling || _isVoiceFilling
-                  ? null
-                  : _autoFillWithAI,
+              onPressed: _isAutoFilling ? null : _autoFillWithAI,
               icon: _isAutoFilling
                   ? const SizedBox(
                       width: 16,
@@ -315,295 +385,330 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
         ),
         body: Form(
           key: _formKey,
-          child: Stepper(
-            currentStep: _currentStep,
-            onStepContinue: _continueStep,
-            onStepCancel: _backStep,
-            controlsBuilder: (context, details) {
-              return Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: Row(
-                  children: [
-                    ElevatedButton(
-                      onPressed: details.onStepContinue,
-                      child: Text(_currentStep == 3 ? 'Submit' : 'Next'),
-                    ),
-                    const SizedBox(width: 12),
-                    if (_currentStep > 0)
-                      TextButton(
-                        onPressed: details.onStepCancel,
-                        child: const Text('Back'),
-                      ),
-                  ],
-                ),
-              );
-            },
-            steps: [
-              Step(
-                title: const Text('Basic Info'),
-                isActive: _currentStep >= 0,
-                content: Column(
-                  children: [
-                    _buildAnimatedField(
-                      fieldKey: 'name',
-                      child: TextFormField(
-                        controller: _nameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Full Name',
-                        ),
-                        validator: (value) => value == null || value.isEmpty
-                            ? 'Name is required'
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _buildAnimatedField(
-                      fieldKey: 'age',
-                      child: TextFormField(
-                        controller: _ageController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(labelText: 'Age'),
-                        validator: (value) => value == null || value.isEmpty
-                            ? 'Age is required'
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _buildAnimatedField(
-                      fieldKey: 'gender',
-                      child: DropdownButtonFormField<String>(
-                        value: _selectedGender,
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'Female',
-                            child: Text('Female'),
+          child: Column(
+            children: [
+              Expanded(
+                child: Stepper(
+                  currentStep: _currentStep,
+                  onStepContinue: _continueStep,
+                  onStepCancel: _backStep,
+                  controlsBuilder: (context, details) {
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 16),
+                      child: Row(
+                        children: [
+                          ElevatedButton(
+                            onPressed: _isSubmitting
+                                ? null
+                                : details.onStepContinue,
+                            child: _isSubmitting
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : Text(_currentStep == 3 ? 'Submit' : 'Next'),
                           ),
-                          DropdownMenuItem(value: 'Male', child: Text('Male')),
-                          DropdownMenuItem(
-                            value: 'Other',
-                            child: Text('Other'),
-                          ),
+                          const SizedBox(width: 12),
+                          if (_currentStep > 0)
+                            TextButton(
+                              onPressed: details.onStepCancel,
+                              child: const Text('Back'),
+                            ),
                         ],
-                        onChanged: (value) {
-                          if (value != null) {
-                            setState(() => _selectedGender = value);
-                          }
-                        },
-                        decoration: const InputDecoration(labelText: 'Gender'),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              Step(
-                title: const Text('Appearance'),
-                isActive: _currentStep >= 1,
-                content: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: _showPhotoSourceSheet,
-                            icon: const Icon(Icons.upload_outlined),
-                            label: Text(
-                              _selectedPhoto == null
-                                  ? 'Upload Photo'
-                                  : 'Change Photo',
+                    );
+                  },
+                  steps: [
+                    Step(
+                      title: const Text('Basic Info'),
+                      isActive: _currentStep >= 0,
+                      content: Column(
+                        children: [
+                          _buildAnimatedField(
+                            fieldKey: 'name',
+                            child: TextFormField(
+                              controller: _nameController,
+                              decoration: const InputDecoration(
+                                labelText: 'Full Name',
+                              ),
+                              validator: (value) =>
+                                  value == null || value.isEmpty
+                                  ? 'Name is required'
+                                  : null,
                             ),
                           ),
-                        ),
-                        if (_selectedPhoto != null) ...[
-                          const SizedBox(width: 8),
-                          IconButton(
-                            tooltip: 'Remove photo',
-                            onPressed: () {
-                              setState(() {
-                                _selectedPhoto = null;
-                              });
-                            },
-                            icon: const Icon(Icons.delete_outline),
+                          const SizedBox(height: 12),
+                          _buildAnimatedField(
+                            fieldKey: 'age',
+                            child: TextFormField(
+                              controller: _ageController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Age',
+                              ),
+                              validator: (value) =>
+                                  value == null || value.isEmpty
+                                  ? 'Age is required'
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildAnimatedField(
+                            fieldKey: 'gender',
+                            child: DropdownButtonFormField<String>(
+                              value: _selectedGender,
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'Female',
+                                  child: Text('Female'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Male',
+                                  child: Text('Male'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Other',
+                                  child: Text('Other'),
+                                ),
+                              ],
+                              onChanged: (value) {
+                                if (value != null) {
+                                  setState(() => _selectedGender = value);
+                                }
+                              },
+                              decoration: const InputDecoration(
+                                labelText: 'Gender',
+                              ),
+                            ),
                           ),
                         ],
-                      ],
+                      ),
                     ),
-                    if (_selectedPhoto != null) ...[
-                      const SizedBox(height: 12),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.network(
-                          _selectedPhoto!.path,
-                          height: 180,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                              Container(
-                                height: 180,
-                                width: double.infinity,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: AppColors.info.withOpacity(0.08),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: AppColors.info.withOpacity(0.25),
+                    Step(
+                      title: const Text('Appearance'),
+                      isActive: _currentStep >= 1,
+                      content: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: _showPhotoSourceSheet,
+                                  icon: const Icon(Icons.upload_outlined),
+                                  label: Text(
+                                    _selectedPhoto == null
+                                        ? 'Upload Photo'
+                                        : 'Change Photo',
                                   ),
                                 ),
-                                child: const Text('Photo preview unavailable'),
                               ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    _buildAnimatedField(
-                      fieldKey: 'height',
-                      child: TextFormField(
-                        controller: _heightController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Height (cm)',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _buildAnimatedField(
-                      fieldKey: 'hair',
-                      child: TextFormField(
-                        controller: _hairColorController,
-                        decoration: const InputDecoration(
-                          labelText: 'Hair Color',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _buildAnimatedField(
-                      fieldKey: 'eye',
-                      child: TextFormField(
-                        controller: _eyeColorController,
-                        decoration: const InputDecoration(
-                          labelText: 'Eye Color',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _buildAnimatedField(
-                      fieldKey: 'clothing',
-                      child: TextFormField(
-                        controller: _clothingController,
-                        decoration: const InputDecoration(
-                          labelText: 'Clothing',
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Step(
-                title: const Text('Last Seen'),
-                isActive: _currentStep >= 2,
-                content: Column(
-                  children: [
-                    _buildAnimatedField(
-                      fieldKey: 'location',
-                      child: TextFormField(
-                        controller: _lastSeenLocationController,
-                        decoration: const InputDecoration(
-                          labelText: 'Last Seen Location',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _buildAnimatedField(
-                      fieldKey: 'time',
-                      child: TextFormField(
-                        controller: _lastSeenTimeController,
-                        decoration: const InputDecoration(
-                          labelText: 'Last Seen Time',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _buildAnimatedField(
-                      fieldKey: 'description',
-                      child: TextFormField(
-                        controller: _descriptionController,
-                        maxLines: 3,
-                        decoration: const InputDecoration(
-                          labelText: 'Additional Details',
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Step(
-                title: const Text('Contact'),
-                isActive: _currentStep >= 3,
-                content: Column(
-                  children: [
-                    _buildAnimatedField(
-                      fieldKey: 'contactName',
-                      child: TextFormField(
-                        controller: _contactNameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Contact Name',
-                        ),
-                        validator: (value) => value == null || value.isEmpty
-                            ? 'Contact name is required'
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _buildAnimatedField(
-                      fieldKey: 'contactPhone',
-                      child: TextFormField(
-                        controller: _contactPhoneController,
-                        keyboardType: TextInputType.phone,
-                        decoration: const InputDecoration(
-                          labelText: 'Contact Phone',
-                        ),
-                        validator: (value) => value == null || value.isEmpty
-                            ? 'Contact phone is required'
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Privacy Level',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: RadioListTile<PrivacyLevel>(
-                                value: PrivacyLevel.public,
-                                groupValue: _selectedPrivacy,
-                                onChanged: (value) {
-                                  if (value != null) {
-                                    setState(() => _selectedPrivacy = value);
-                                  }
-                                },
-                                title: const Text('Public'),
+                              if (_selectedPhoto != null) ...[
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  tooltip: 'Remove photo',
+                                  onPressed: () {
+                                    setState(() {
+                                      _selectedPhoto = null;
+                                    });
+                                  },
+                                  icon: const Icon(Icons.delete_outline),
+                                ),
+                              ],
+                            ],
+                          ),
+                          if (_selectedPhoto != null) ...[
+                            const SizedBox(height: 12),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.network(
+                                _selectedPhoto!.path,
+                                height: 180,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    Container(
+                                      height: 180,
+                                      width: double.infinity,
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(
+                                        color: AppColors.info.withOpacity(0.08),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: AppColors.info.withOpacity(
+                                            0.25,
+                                          ),
+                                        ),
+                                      ),
+                                      child: const Text(
+                                        'Photo preview unavailable',
+                                      ),
+                                    ),
                               ),
                             ),
-                            Expanded(
-                              child: RadioListTile<PrivacyLevel>(
-                                value: PrivacyLevel.protected,
-                                groupValue: _selectedPrivacy,
-                                onChanged: (value) {
-                                  if (value != null) {
-                                    setState(() => _selectedPrivacy = value);
-                                  }
-                                },
-                                title: const Text('Protected'),
-                              ),
-                            ),
+                            const SizedBox(height: 12),
                           ],
-                        ),
-                      ],
+                          _buildAnimatedField(
+                            fieldKey: 'height',
+                            child: TextFormField(
+                              controller: _heightController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Height (cm)',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildAnimatedField(
+                            fieldKey: 'hair',
+                            child: TextFormField(
+                              controller: _hairColorController,
+                              decoration: const InputDecoration(
+                                labelText: 'Hair Color',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildAnimatedField(
+                            fieldKey: 'eye',
+                            child: TextFormField(
+                              controller: _eyeColorController,
+                              decoration: const InputDecoration(
+                                labelText: 'Eye Color',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildAnimatedField(
+                            fieldKey: 'clothing',
+                            child: TextFormField(
+                              controller: _clothingController,
+                              decoration: const InputDecoration(
+                                labelText: 'Clothing',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Step(
+                      title: const Text('Last Seen'),
+                      isActive: _currentStep >= 2,
+                      content: Column(
+                        children: [
+                          _buildAnimatedField(
+                            fieldKey: 'location',
+                            child: TextFormField(
+                              controller: _lastSeenLocationController,
+                              decoration: const InputDecoration(
+                                labelText: 'Last Seen Location',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildAnimatedField(
+                            fieldKey: 'time',
+                            child: TextFormField(
+                              controller: _lastSeenTimeController,
+                              decoration: const InputDecoration(
+                                labelText: 'Last Seen Time',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildAnimatedField(
+                            fieldKey: 'description',
+                            child: TextFormField(
+                              controller: _descriptionController,
+                              maxLines: 3,
+                              decoration: const InputDecoration(
+                                labelText: 'Additional Details',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Step(
+                      title: const Text('Contact'),
+                      isActive: _currentStep >= 3,
+                      content: Column(
+                        children: [
+                          _buildAnimatedField(
+                            fieldKey: 'contactName',
+                            child: TextFormField(
+                              controller: _contactNameController,
+                              decoration: const InputDecoration(
+                                labelText: 'Contact Name',
+                              ),
+                              validator: (value) =>
+                                  value == null || value.isEmpty
+                                  ? 'Contact name is required'
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _buildAnimatedField(
+                            fieldKey: 'contactPhone',
+                            child: TextFormField(
+                              controller: _contactPhoneController,
+                              keyboardType: TextInputType.phone,
+                              decoration: const InputDecoration(
+                                labelText: 'Contact Phone',
+                              ),
+                              validator: (value) =>
+                                  value == null || value.isEmpty
+                                  ? 'Contact phone is required'
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Privacy Level',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: RadioListTile<PrivacyLevel>(
+                                      value: PrivacyLevel.public,
+                                      groupValue: _selectedPrivacy,
+                                      onChanged: (value) {
+                                        if (value != null) {
+                                          setState(
+                                            () => _selectedPrivacy = value,
+                                          );
+                                        }
+                                      },
+                                      title: const Text('Public'),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: RadioListTile<PrivacyLevel>(
+                                      value: PrivacyLevel.protected,
+                                      groupValue: _selectedPrivacy,
+                                      onChanged: (value) {
+                                        if (value != null) {
+                                          setState(
+                                            () => _selectedPrivacy = value,
+                                          );
+                                        }
+                                      },
+                                      title: const Text('Protected'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),

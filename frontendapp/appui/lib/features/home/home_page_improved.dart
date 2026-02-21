@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/constants/app_constants.dart';
-import '../../widgets/glass_card.dart';
-import '../../widgets/urgency_badge.dart';
-import '../../models/missing_person.dart';
+
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});

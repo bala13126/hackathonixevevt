@@ -1,6 +1,12 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../../core/theme/app_colors.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/services/backend_api_service.dart';
 import '../../models/chat_message.dart';
 
 class AIChatScreen extends StatefulWidget {
@@ -12,6 +18,7 @@ class AIChatScreen extends StatefulWidget {
 
 class _AIChatScreenState extends State<AIChatScreen> {
   final TextEditingController _messageController = TextEditingController();
+  final stt.SpeechToText _speech = stt.SpeechToText();
   final List<ChatMessage> _messages = [
     ChatMessage(
       id: '1',
@@ -21,6 +28,14 @@ class _AIChatScreenState extends State<AIChatScreen> {
     ),
   ];
   bool _isTyping = false;
+  bool _speechReady = false;
+  bool _isListening = false;
+  String _speechTranscript = '';
+  Completer<String>? _speechCompleter;
+
+  static const String _latestVoiceDetailsKey = 'latest_voice_details';
+  static const String _latestVoiceTextKey = 'latest_voice_text';
+  static const String _latestVoiceTimeKey = 'latest_voice_time';
 
   final List<String> _suggestions = [
     'Report a missing person',
@@ -31,11 +46,38 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
   @override
   void dispose() {
+    _speech.stop();
     _messageController.dispose();
     super.dispose();
   }
 
-  void _sendMessage([String? text]) {
+  @override
+  void initState() {
+    super.initState();
+    _initSpeech();
+  }
+
+  Future<void> _initSpeech() async {
+    final available = await _speech.initialize(
+      onError: (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Speech error: ${error.errorMsg}'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      },
+    );
+
+    if (mounted) {
+      setState(() {
+        _speechReady = available;
+      });
+    }
+  }
+
+  Future<void> _sendMessage([String? text, bool skipParse = false]) async {
     final content = text ?? _messageController.text.trim();
     if (content.isEmpty) return;
 
@@ -53,37 +95,202 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
     _messageController.clear();
 
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        final aiResponse = ChatMessage(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          text: _generateAIResponse(userMessage.text),
-          sender: MessageSender.ai,
-          timestamp: DateTime.now(),
-        );
+    try {
+      final reply = await BackendApiService.aiChat(text: userMessage.text);
+      if (!mounted) return;
+      final aiResponse = ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        text: reply.isEmpty
+            ? 'Thanks. Let me know if you want to report a missing person.'
+            : reply,
+        sender: MessageSender.ai,
+        timestamp: DateTime.now(),
+      );
 
-        setState(() {
-          _messages.add(aiResponse);
-          _isTyping = false;
-        });
+      setState(() {
+        _messages.add(aiResponse);
+        _isTyping = false;
+      });
+
+      if (!skipParse) {
+        await _storeParsedDetails(userMessage.text);
       }
-    });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isTyping = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('AI assistant failed: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
   }
 
-  String _generateAIResponse(String userMessage) {
-    final lowerMessage = userMessage.toLowerCase();
-
-    if (lowerMessage.contains('report') || lowerMessage.contains('missing')) {
-      return 'I can guide you through a full report. Start with the person\'s name, age, and last seen location.';
-    } else if (lowerMessage.contains('tip')) {
-      return 'Tips should include location, time, and any supporting details. I can help format it for you.';
-    } else if (lowerMessage.contains('nearby')) {
-      return 'Nearby cases are organized by urgency and distance. Would you like critical cases first?';
-    } else if (lowerMessage.contains('emergency')) {
-      return 'If there is immediate danger, contact local emergency services first. I can help document details next.';
+  Future<void> _startListening() async {
+    if (_isListening) return;
+    if (!_speechReady) {
+      await _initSpeech();
+    }
+    if (!_speechReady) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Microphone not available.'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+      return;
     }
 
-    return 'I understand. Tell me more so I can help you take the next step.';
+    setState(() {
+      _isListening = true;
+    });
+
+    final transcript = await _captureSpeechText();
+    if (!mounted) return;
+
+    setState(() {
+      _isListening = false;
+    });
+
+    if (transcript.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No speech detected.')),
+      );
+      return;
+    }
+
+    await _handleVoiceMessage(transcript);
+  }
+
+  Future<String> _captureSpeechText() async {
+    final completer = Completer<String>();
+    _speechCompleter = completer;
+    _speechTranscript = '';
+
+    await _speech.listen(
+      onResult: (result) {
+        _speechTranscript = result.recognizedWords;
+        if (result.finalResult && !completer.isCompleted) {
+          completer.complete(_speechTranscript);
+        }
+      },
+      listenMode: stt.ListenMode.dictation,
+      partialResults: true,
+      listenFor: const Duration(seconds: 60),
+      pauseFor: const Duration(seconds: 10),
+    );
+
+    Future<void>.delayed(const Duration(seconds: 60)).then((_) {
+      if (!completer.isCompleted) {
+        completer.complete(_speechTranscript);
+      }
+    });
+
+    final result = await completer.future;
+    _speechCompleter = null;
+    await _speech.stop();
+    return result.trim();
+  }
+
+  Future<void> _stopListening() async {
+    if (!_speech.isListening) return;
+    await _speech.stop();
+    if (_speechCompleter != null && !_speechCompleter!.isCompleted) {
+      _speechCompleter!.complete(_speechTranscript);
+    }
+  }
+
+  Future<void> _handleVoiceMessage(String transcript) async {
+    await _sendMessage(transcript, true);
+
+    try {
+      final parsed = await BackendApiService.parseVoiceReport(text: transcript);
+      final prefs = await SharedPreferences.getInstance();
+      if (!_hasAnyParsedValue(parsed)) {
+        parsed['description'] = transcript;
+      }
+      await prefs.setString(_latestVoiceDetailsKey, jsonEncode(parsed));
+      await prefs.setString(_latestVoiceTextKey, transcript);
+      await prefs.setInt(
+        _latestVoiceTimeKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _latestVoiceDetailsKey,
+        jsonEncode({'description': transcript}),
+      );
+      await prefs.setString(_latestVoiceTextKey, transcript);
+      await prefs.setInt(
+        _latestVoiceTimeKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Voice parse failed: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _storeParsedDetails(String text) async {
+    try {
+      final parsed = await BackendApiService.parseVoiceReport(text: text);
+      final prefs = await SharedPreferences.getInstance();
+      if (!_hasAnyParsedValue(parsed)) {
+        parsed['description'] = text;
+      }
+      await prefs.setString(_latestVoiceDetailsKey, jsonEncode(parsed));
+      await prefs.setString(_latestVoiceTextKey, text);
+      await prefs.setInt(
+        _latestVoiceTimeKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+    } catch (_) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _latestVoiceDetailsKey,
+        jsonEncode({'description': text}),
+      );
+      await prefs.setString(_latestVoiceTextKey, text);
+      await prefs.setInt(
+        _latestVoiceTimeKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+    }
+  }
+
+  bool _hasAnyParsedValue(Map<String, dynamic> parsed) {
+    const keys = [
+      'name',
+      'age',
+      'gender',
+      'height',
+      'hairColor',
+      'eyeColor',
+      'clothing',
+      'lastSeenLocation',
+      'lastSeenTime',
+      'description',
+      'contactName',
+      'contactPhone',
+    ];
+
+    for (final key in keys) {
+      final value = parsed[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @override
@@ -186,6 +393,28 @@ class _AIChatScreenState extends State<AIChatScreen> {
                 ],
               ),
             ),
+          if (_isListening)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              color: AppColors.info.withOpacity(0.08),
+              child: Row(
+                children: [
+                  const Icon(Icons.graphic_eq, color: AppColors.info),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Listening... speak the details clearly.',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _stopListening,
+                    child: const Text('Stop'),
+                  ),
+                ],
+              ),
+            ),
           Container(
             padding: const EdgeInsets.all(AppConstants.spacing16),
             decoration: BoxDecoration(
@@ -199,8 +428,12 @@ class _AIChatScreenState extends State<AIChatScreen> {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.mic_outlined),
-                    onPressed: () {},
+                    icon: Icon(
+                      _isListening
+                          ? Icons.stop_circle_outlined
+                          : Icons.mic_outlined,
+                    ),
+                    onPressed: _isListening ? _stopListening : _startListening,
                     color: AppColors.primary,
                   ),
                   Expanded(

@@ -313,7 +313,7 @@ class CaseDetailScreen extends StatelessWidget {
           ],
         ),
 
-        // Submit Tip Button
+        // Found Missing Person Button
         floatingActionButton: FloatingActionButton.extended(
           onPressed: () {
             Navigator.pushNamed(
@@ -323,7 +323,7 @@ class CaseDetailScreen extends StatelessWidget {
             );
           },
           icon: const Icon(Icons.tips_and_updates),
-          label: const Text('Submit Tip'),
+          label: const Text('Found Missing Person'),
         ),
       ),
     );
