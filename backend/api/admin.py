@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Case, Tip, HonourProfile
+from .models import Case, Tip, HonourProfile, Reward, RewardRedemption, UserCoupon
 
 
 @admin.register(Case)
@@ -20,3 +20,24 @@ class TipAdmin(admin.ModelAdmin):
 class HonourProfileAdmin(admin.ModelAdmin):
     list_display = ('id', 'user', 'score')
     search_fields = ('user__username', 'user__email')
+
+
+@admin.register(Reward)
+class RewardAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'points_required', 'is_active', 'created_at')
+    list_filter = ('is_active',)
+    search_fields = ('name', 'description')
+
+
+@admin.register(RewardRedemption)
+class RewardRedemptionAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reward', 'user', 'status', 'requested_at', 'reviewed_at')
+    list_filter = ('status',)
+    search_fields = ('reward__name', 'user__username', 'user__email')
+
+
+@admin.register(UserCoupon)
+class UserCouponAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reward', 'user', 'status', 'issued_at', 'used_at')
+    list_filter = ('status',)
+    search_fields = ('reward__name', 'user__username', 'user__email')

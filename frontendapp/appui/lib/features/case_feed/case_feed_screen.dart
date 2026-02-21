@@ -3,6 +3,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/services/backend_api_service.dart';
+import '../../core/services/geo_smart_alert_service.dart';
 import '../../widgets/missing_person_card.dart';
 import '../../models/missing_person.dart';
 
@@ -18,6 +19,7 @@ class _CaseFeedScreenState extends State<CaseFeedScreen> {
   bool _isLoading = true;
   String? _errorMessage;
   List<MissingPerson> _cases = [];
+  final GeoSmartAlertService _geoService = GeoSmartAlertService();
 
   @override
   void initState() {
@@ -53,9 +55,21 @@ class _CaseFeedScreenState extends State<CaseFeedScreen> {
 
   List<MissingPerson> get _filteredCases {
     if (_filterUrgency == null) {
-      return _cases;
+      return _prioritizeCases(_cases);
     }
-    return _cases.where((item) => item.urgency == _filterUrgency).toList();
+    return _prioritizeCases(
+      _cases.where((item) => item.urgency == _filterUrgency).toList(),
+    );
+  }
+
+  List<MissingPerson> _prioritizeCases(List<MissingPerson> cases) {
+    final sorted = List<MissingPerson>.from(cases);
+    sorted.sort(
+      (a, b) => _geoService.priorityScore(b).compareTo(
+        _geoService.priorityScore(a),
+      ),
+    );
+    return sorted;
   }
 
   @override

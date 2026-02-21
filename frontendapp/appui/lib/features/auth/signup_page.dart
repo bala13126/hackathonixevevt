@@ -44,11 +44,16 @@ class _SignupPageState extends State<SignupPage> {
   }
 
   String? _validateEmail(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'Email is required';
+    final trimmed = (value ?? '').trim();
+    final phone = _phoneController.text.trim();
+    if (trimmed.isEmpty && phone.isEmpty) {
+      return 'Email or phone is required';
+    }
+    if (trimmed.isEmpty) {
+      return null;
     }
     final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-    if (!emailRegex.hasMatch(value)) {
+    if (!emailRegex.hasMatch(trimmed)) {
       return 'Enter a valid email';
     }
     return null;
@@ -91,6 +96,7 @@ class _SignupPageState extends State<SignupPage> {
       await BackendApiService.register(
         username: username,
         email: email,
+        phone: phone.isEmpty ? null : phone,
         password: _passwordController.text.trim(),
         firstName: _firstNameController.text.trim(),
         lastName: _lastNameController.text.trim(),

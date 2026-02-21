@@ -12,7 +12,7 @@ import {
   LineElement,
 } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
-import { FiGrid, FiCheckSquare, FiMessageSquare, FiBarChart2, FiAward, FiLoader, FiActivity, FiClock, FiAlertCircle, FiTrendingUp, FiMapPin } from 'react-icons/fi';
+import { FiGrid, FiCheckSquare, FiMessageSquare, FiBarChart2, FiAward, FiLoader, FiActivity, FiClock, FiAlertCircle, FiTrendingUp } from 'react-icons/fi';
 import './Dashboard.css';
 
 // Register ChartJS components
@@ -30,81 +30,40 @@ ChartJS.register(
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://127.0.0.1:8000/api';
 
-const resolveMediaUrl = (path) => {
-  const value = (path || '').trim();
-  if (!value) return '';
-  if (value.startsWith('http://') || value.startsWith('https://')) {
-    return value;
-  }
-  const base = API_BASE_URL.replace('/api', '');
-  return `${base}${value.startsWith('/') ? value : `/${value}`}`;
-};
-
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
 
   // Real-time Data State
   const [cases, setCases] = useState([]);
   const [tips, setTips] = useState([]);
-<<<<<<< HEAD
-  const [rewards, setRewards] = useState([]);
-=======
-  const [sightingReports, setSightingReports] = useState([]);
   const [users, setUsers] = useState([]);
->>>>>>> b20a93bd0bdb027fb7c8c54077d142be9756b03f
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [isLoading, setIsLoading] = useState(true);
+  const [rewards, setRewards] = useState([]);
+  const [redemptions, setRedemptions] = useState([]);
+  const [reports, setReports] = useState([]);
+  const [pointsAdjustments, setPointsAdjustments] = useState({});
 
   // API Configuration
   // Fetch Data (Polling for real-time updates)
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [casesRes, tipsRes, rewardsRes] = await Promise.all([
+        const [casesRes, tipsRes, usersRes, rewardsRes, redemptionsRes, reportsRes] = await Promise.all([
           fetch(`${API_BASE_URL}/cases`),
           fetch(`${API_BASE_URL}/tips`),
-          fetch(`${API_BASE_URL}/rewards`)
+          fetch(`${API_BASE_URL}/users`),
+          fetch(`${API_BASE_URL}/rewards`),
+          fetch(`${API_BASE_URL}/rewards/redemptions`),
+          fetch(`${API_BASE_URL}/reports/`)
         ]);
 
-        let fetchedCases = [];
-        if (casesRes.ok) {
-          fetchedCases = await casesRes.json();
-          setCases(fetchedCases);
-        }
+        if (casesRes.ok) setCases(await casesRes.json());
         if (tipsRes.ok) setTips(await tipsRes.json());
-<<<<<<< HEAD
-        if (rewardsRes.ok) setRewards(await rewardsRes.json());
-=======
         if (usersRes.ok) setUsers(await usersRes.json());
-
-        if (fetchedCases.length > 0) {
-          const reportsResponses = await Promise.all(
-            fetchedCases.map((caseItem) =>
-              fetch(`${API_BASE_URL}/cases/${caseItem.id}/reports/`)
-            )
-          );
-
-          const reportsPayloads = await Promise.all(
-            reportsResponses.map(async (response) =>
-              response.ok ? response.json() : []
-            )
-          );
-
-          const flattened = reportsPayloads
-            .flat()
-            .map((report) => ({
-              ...report,
-              caseName:
-                fetchedCases.find((caseItem) => caseItem.id === report.missing_case_id)?.name ||
-                `Case #${report.missing_case_id}`,
-            }));
-
-          setSightingReports(flattened);
-        } else {
-          setSightingReports([]);
-        }
-
->>>>>>> b20a93bd0bdb027fb7c8c54077d142be9756b03f
+        if (rewardsRes.ok) setRewards(await rewardsRes.json());
+        if (redemptionsRes.ok) setRedemptions(await redemptionsRes.json());
+        if (reportsRes.ok) setReports(await reportsRes.json());
         setLastUpdated(new Date());
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
@@ -148,53 +107,73 @@ const Dashboard = () => {
     }
   };
 
-<<<<<<< HEAD
-  const handleRewardAction = async (id, action) => {
-    // Optimistic UI update
-    const updates = { redeem_status: action };
-    if (action === 'Issued') {
-      updates.voucher_code = 'VOUCH-' + Math.random().toString(36).substr(2, 9).toUpperCase();
-    }
-
-    setRewards(rewards.map(r => r.id === id ? { ...r, ...updates } : r));
+  const handleRedemptionReview = async (id, status) => {
+    setRedemptions(redemptions.map(r => r.id === id ? { ...r, status } : r));
 
     try {
-      await fetch(`${API_BASE_URL}/rewards/${id}`, {
-        method: 'PUT',
+      await fetch(`${API_BASE_URL}/rewards/redemptions/${id}/review`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
+        body: JSON.stringify({ status }),
       });
     } catch (error) {
-      console.error('Failed to update reward:', error);
-=======
-  const handleReviewSighting = async (id, status, closeCase = false) => {
-    setSightingReports(
-      sightingReports.map((report) =>
-        report.id === id ? { ...report, status } : report
-      )
-    );
-
-    const targetReport = sightingReports.find((report) => report.id === id);
-    if (status === 'Accepted' && closeCase && targetReport?.missing_case_id) {
-      setCases(
-        cases.map((caseItem) =>
-          caseItem.id === targetReport.missing_case_id
-            ? { ...caseItem, status: 'Solved' }
-            : caseItem
-        )
-      );
+      console.error('Failed to review redemption:', error);
     }
+  };
+
+  const handleReportReview = async (id, status) => {
+    setReports(reports.map(r => r.id === id ? { ...r, status } : r));
 
     try {
       await fetch(`${API_BASE_URL}/reports/${id}/review/`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, closeCase }),
+        body: JSON.stringify({ status }),
       });
     } catch (error) {
-      console.error('Failed to review sighting report:', error);
->>>>>>> b20a93bd0bdb027fb7c8c54077d142be9756b03f
+      console.error('Failed to review report:', error);
     }
+  };
+
+  const handlePointsChange = (userId, value) => {
+    setPointsAdjustments(prev => ({ ...prev, [userId]: value }));
+  };
+
+  const handleAwardPoints = async (userId, mode = 'add') => {
+    const rawValue = pointsAdjustments[userId];
+    const points = Number(rawValue);
+    if (!Number.isFinite(points)) {
+      alert('Please enter a valid number');
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/users/${userId}/points`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ points, mode }),
+      });
+      if (!res.ok) {
+        throw new Error('Failed to update points');
+      }
+      const updated = await res.json();
+      setUsers(users.map(u => (u.id === userId ? updated : u)));
+      setPointsAdjustments(prev => ({ ...prev, [userId]: '' }));
+      alert(`Points ${mode === 'add' ? 'added' : 'set'} successfully! New score: ${updated.score}`);
+    } catch (error) {
+      console.error('Failed to update points:', error);
+      alert(`Failed to update points: ${error.message}`);
+    }
+  };
+
+  const urgencyScore = (caseItem) => {
+    const urgencyWeight = caseItem.urgency === 'High' ? 1 : caseItem.urgency === 'Medium' ? 0.7 : 0.4;
+    const hoursAgo = Math.max(
+      0,
+      (Date.now() - new Date(caseItem.created_at).getTime()) / (1000 * 60 * 60)
+    );
+    const recency = Math.max(0, 1 - hoursAgo / 72);
+    return (urgencyWeight * 0.65 + recency * 0.35).toFixed(2);
   };
 
   // Analytics Data Configuration
@@ -266,11 +245,20 @@ const Dashboard = () => {
       </div>
       <div className="stat-card">
         <div>
+          <h3>Rewards</h3>
+          <p>{rewards.length}</p>
+        </div>
+        <div className="stat-icon icon-blue">
+          <FiAward size={24} />
+        </div>
+      </div>
+      <div className="stat-card">
+        <div>
           <h3>Sighting Reports</h3>
-          <p>{sightingReports.length}</p>
+          <p>{reports.length}</p>
         </div>
         <div className="stat-icon icon-orange">
-          <FiMapPin size={24} />
+          <FiAlertCircle size={24} />
         </div>
       </div>
     </div>
@@ -287,12 +275,13 @@ const Dashboard = () => {
             <th>Reliability</th>
             <th style={{ textAlign: 'center' }}>Urgency</th>
             <th>Status</th>
+            <th>Urgency Score</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {cases.length === 0 ? (
-            <tr><td colSpan="6" className="empty-state">No cases to display.</td></tr>
+            <tr><td colSpan="7" className="empty-state">No cases to display.</td></tr>
           ) : cases.map(c => (
             <tr key={c.id}>
               <td>{c.name}</td>
@@ -308,6 +297,7 @@ const Dashboard = () => {
               <td>
                 <span className={`status-badge ${c.status.toLowerCase()}`}>{c.status}</span>
               </td>
+              <td>{urgencyScore(c)}</td>
               <td>
                 {c.status === 'Pending' && (
                   <>
@@ -360,57 +350,6 @@ const Dashboard = () => {
     </div>
   );
 
-  const renderSightings = () => (
-    <div className="table-container">
-      <h2>Public Sighting Reports</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Case</th>
-            <th>Reporter</th>
-            <th>Location</th>
-            <th>Evidence</th>
-            <th>Description</th>
-            <th>Status</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sightingReports.length === 0 ? (
-            <tr><td colSpan="7" className="empty-state">No public sighting reports available.</td></tr>
-          ) : sightingReports.map((report) => (
-            <tr key={report.id}>
-              <td>{report.caseName}</td>
-              <td>{report.reporter_name || 'Anonymous'}</td>
-              <td>{report.latitude}, {report.longitude}</td>
-              <td>
-                {report.image ? (
-                  <a href={resolveMediaUrl(report.image)} target="_blank" rel="noreferrer">
-                    View Image
-                  </a>
-                ) : 'N/A'}
-              </td>
-              <td>{report.description}</td>
-              <td>
-                <span className={`status-badge ${(report.status || 'Pending').toLowerCase()}`}>
-                  {report.status || 'Pending'}
-                </span>
-              </td>
-              <td>
-                {(report.status || 'Pending') === 'Pending' && (
-                  <>
-                    <button className="btn-solve" onClick={() => handleReviewSighting(report.id, 'Accepted', true)}>Verify & Close</button>
-                    <button className="btn-reject" onClick={() => handleReviewSighting(report.id, 'Rejected')}>Reject</button>
-                  </>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-
   const renderAnalytics = () => (
     <div className="analytics-grid">
       <div className="chart-card">
@@ -436,43 +375,118 @@ const Dashboard = () => {
     </div>
   );
 
-  const renderRewards = () => (
+  const renderHonour = () => (
     <div className="table-container">
-      <h2>Reward & Voucher Management</h2>
+      <h2>Honour System Management</h2>
       <table>
         <thead>
           <tr>
-            <th>User ID</th>
-            <th>Total Points</th>
-            <th>Reward Tier</th>
-            <th>Redeem Status</th>
-            <th>Voucher Code</th>
-            <th>Actions</th>
+            <th>User</th>
+            <th>Score</th>
+            <th>Medals</th>
+            <th>Points</th>
+            <th>Action</th>
           </tr>
         </thead>
         <tbody>
-          {rewards.length === 0 ? (
-            <tr><td colSpan="6" className="empty-state">No reward requests found.</td></tr>
-          ) : rewards.map(r => (
-            <tr key={r.id}>
-              <td>{r.user_id}</td>
-              <td>{r.total_points}</td>
-              <td>{r.reward_tier}</td>
+          {users.length === 0 ? (
+            <tr><td colSpan="5" className="empty-state">No users in the honour system yet.</td></tr>
+          ) : users.map(u => (
+            <tr key={u.id}>
+              <td>{u.name}</td>
+              <td>{u.score}</td>
+              <td>{u.medals.join(', ')}</td>
               <td>
-                <span className={`status-badge ${r.redeem_status.toLowerCase()}`}>
-                  {r.redeem_status}
-                </span>
+                <input
+                  className="points-input"
+                  type="number"
+                  placeholder="+10"
+                  value={pointsAdjustments[u.id] ?? ''}
+                  onChange={(event) => handlePointsChange(u.id, event.target.value)}
+                />
               </td>
-              <td>{r.voucher_code || '-'}</td>
               <td>
-                {r.redeem_status === 'Pending' && (
+                <button className="btn-approve" onClick={() => handleAwardPoints(u.id, 'add')}>Add</button>
+                <button className="btn-reject" onClick={() => handleAwardPoints(u.id, 'set')}>Set</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const renderRewards = () => (
+    <div className="table-container">
+      <h2>Rewards & Redemptions</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Reward</th>
+            <th>Points</th>
+            <th>Status</th>
+            <th>Requested By</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {redemptions.length === 0 ? (
+            <tr><td colSpan="5" className="empty-state">No redemptions yet.</td></tr>
+          ) : redemptions.map(r => (
+            <tr key={r.id}>
+              <td>{r.rewardName || r.reward}</td>
+              <td>{rewards.find(rew => rew.id === r.reward)?.points_required ?? '-'}</td>
+              <td>
+                <span className={`status-badge ${r.status.toLowerCase()}`}>{r.status}</span>
+              </td>
+              <td>{r.userName || `User #${r.userId}`}</td>
+              <td>
+                {r.status === 'Pending' && (
                   <>
-                    <button className="btn-approve" onClick={() => handleRewardAction(r.id, 'Approved')}>Approve</button>
-                    <button className="btn-reject" onClick={() => handleRewardAction(r.id, 'Rejected')}>Reject</button>
+                    <button className="btn-approve" onClick={() => handleRedemptionReview(r.id, 'Approved')}>Approve</button>
+                    <button className="btn-reject" onClick={() => handleRedemptionReview(r.id, 'Rejected')}>Reject</button>
                   </>
                 )}
-                {r.redeem_status === 'Approved' && (
-                  <button className="btn-verify" onClick={() => handleRewardAction(r.id, 'Issued')}>Issue Voucher</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const renderSightings = () => (
+    <div className="table-container">
+      <h2>Sighting Reports</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Case</th>
+            <th>Reporter</th>
+            <th>Summary</th>
+            <th>Location</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {reports.length === 0 ? (
+            <tr><td colSpan="6" className="empty-state">No sighting reports yet.</td></tr>
+          ) : reports.map(r => (
+            <tr key={r.id}>
+              <td>#{r.missing_case_id}</td>
+              <td>{r.reporter_name || 'Anonymous'}</td>
+              <td>{r.description?.slice(0, 80)}{r.description?.length > 80 ? '...' : ''}</td>
+              <td>{r.latitude?.toFixed(3)}, {r.longitude?.toFixed(3)}</td>
+              <td>
+                <span className={`status-badge ${r.status.toLowerCase()}`}>{r.status}</span>
+              </td>
+              <td>
+                {r.status === 'Pending' && (
+                  <>
+                    <button className="btn-approve" onClick={() => handleReportReview(r.id, 'Accepted')}>Accept</button>
+                    <button className="btn-reject" onClick={() => handleReportReview(r.id, 'Rejected')}>Reject</button>
+                  </>
                 )}
               </td>
             </tr>
@@ -499,9 +513,10 @@ const Dashboard = () => {
           <button className={activeTab === 'overview' ? 'active' : ''} onClick={() => setActiveTab('overview')}><FiGrid /><span>Dashboard</span></button>
           <button className={activeTab === 'cases' ? 'active' : ''} onClick={() => setActiveTab('cases')}><FiCheckSquare /><span>Case Management</span></button>
           <button className={activeTab === 'tips' ? 'active' : ''} onClick={() => setActiveTab('tips')}><FiMessageSquare /><span>Tip Monitoring</span></button>
-          <button className={activeTab === 'sightings' ? 'active' : ''} onClick={() => setActiveTab('sightings')}><FiMapPin /><span>Sighting Reports</span></button>
           <button className={activeTab === 'analytics' ? 'active' : ''} onClick={() => setActiveTab('analytics')}><FiBarChart2 /><span>Analytics</span></button>
+          <button className={activeTab === 'honour' ? 'active' : ''} onClick={() => setActiveTab('honour')}><FiAward /><span>Honour System</span></button>
           <button className={activeTab === 'rewards' ? 'active' : ''} onClick={() => setActiveTab('rewards')}><FiAward /><span>Rewards</span></button>
+          <button className={activeTab === 'sightings' ? 'active' : ''} onClick={() => setActiveTab('sightings')}><FiAlertCircle /><span>Sightings</span></button>
         </nav>
       </div>
       <div className="main-content">
@@ -518,9 +533,10 @@ const Dashboard = () => {
           {activeTab === 'overview' && renderOverview()}
           {activeTab === 'cases' && renderCases()}
           {activeTab === 'tips' && renderTips()}
-          {activeTab === 'sightings' && renderSightings()}
           {activeTab === 'analytics' && renderAnalytics()}
+          {activeTab === 'honour' && renderHonour()}
           {activeTab === 'rewards' && renderRewards()}
+          {activeTab === 'sightings' && renderSightings()}
         </div>
       </div>
     </div>

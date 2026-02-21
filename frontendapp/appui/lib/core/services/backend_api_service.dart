@@ -111,6 +111,7 @@ class BackendApiService {
     required String description,
     required UrgencyLevel urgency,
     XFile? photo,
+    int? userId,
   }) async {
     final request = http.MultipartRequest('POST', _endpoint('cases'))
       ..fields['name'] = name
@@ -120,6 +121,10 @@ class BackendApiService {
       ..fields['reliability'] = '70'
       ..fields['urgency'] = _mapUrgencyToApi(urgency)
       ..fields['status'] = 'Pending';
+
+    if (userId != null) {
+      request.fields['userId'] = userId.toString();
+    }
 
     if (photo != null) {
       final bytes = await photo.readAsBytes();
@@ -146,6 +151,7 @@ class BackendApiService {
     required bool shareLocation,
     XFile? attachment,
     String reporter = 'Anonymous',
+    int? userId,
   }) async {
     final request = http.MultipartRequest('POST', _endpoint('tips'))
       ..fields['caseId'] = caseId.toString()
@@ -153,6 +159,10 @@ class BackendApiService {
       ..fields['isAnonymous'] = isAnonymous.toString()
       ..fields['shareLocation'] = shareLocation.toString()
       ..fields['reporter'] = reporter;
+
+    if (userId != null) {
+      request.fields['userId'] = userId.toString();
+    }
 
     if (attachment != null) {
       final bytes = await attachment.readAsBytes();
@@ -171,49 +181,6 @@ class BackendApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> submitSightingReport({
-    required int caseId,
-    required String description,
-    required double latitude,
-    required double longitude,
-    required XFile image,
-    String? reporterName,
-    String? reporterContact,
-  }) async {
-    final request =
-        http.MultipartRequest('POST', _endpoint('cases/$caseId/report-sighting/'))
-          ..fields['description'] = description
-          ..fields['latitude'] = latitude.toString()
-          ..fields['longitude'] = longitude.toString();
-
-    final trimmedReporterName = (reporterName ?? '').trim();
-    if (trimmedReporterName.isNotEmpty) {
-      request.fields['reporter_name'] = trimmedReporterName;
-    }
-
-    final trimmedReporterContact = (reporterContact ?? '').trim();
-    if (trimmedReporterContact.isNotEmpty) {
-      request.fields['reporter_contact'] = trimmedReporterContact;
-    }
-
-    final bytes = await image.readAsBytes();
-    request.files.add(
-      http.MultipartFile.fromBytes('image', bytes, filename: image.name),
-    );
-
-    final streamed = await request.send();
-    final response = await http.Response.fromStream(streamed);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Failed to submit sighting report (${response.statusCode})');
-    }
-
-    final decoded = jsonDecode(response.body);
-    if (decoded is Map<String, dynamic>) {
-      return decoded;
-    }
-    return {};
-  }
-
   static Future<Map<String, dynamic>> login({
     required String usernameOrEmail,
     required String password,
@@ -222,6 +189,8 @@ class BackendApiService {
     final payload = <String, String>{'password': password};
     if (trimmed.contains('@')) {
       payload['email'] = trimmed;
+    } else if (RegExp(r'^\d{7,15}$').hasMatch(trimmed)) {
+      payload['phone'] = trimmed;
     } else {
       payload['username'] = trimmed;
     }
@@ -233,7 +202,9 @@ class BackendApiService {
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Login failed (${response.statusCode})');
+      throw Exception(
+        _extractError(response, 'Login failed (${response.statusCode})'),
+      );
     }
 
     final decoded = jsonDecode(response.body);
@@ -246,6 +217,7 @@ class BackendApiService {
   static Future<Map<String, dynamic>> register({
     required String username,
     required String email,
+    String? phone,
     required String password,
     required String firstName,
     required String lastName,
@@ -256,6 +228,7 @@ class BackendApiService {
       body: jsonEncode({
         'username': username,
         'email': email,
+        'phone': phone,
         'password': password,
         'firstName': firstName,
         'lastName': lastName,
@@ -263,7 +236,9 @@ class BackendApiService {
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Signup failed (${response.statusCode})');
+      throw Exception(
+        _extractError(response, 'Signup failed (${response.statusCode})'),
+      );
     }
 
     final decoded = jsonDecode(response.body);
@@ -328,5 +303,86 @@ class BackendApiService {
       // Ignore parsing errors and use fallback.
     }
     return fallback;
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchRewards() async {
+    final response = await http.get(_endpoint('rewards'));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Failed to fetch rewards (${response.statusCode})');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is List) {
+      return decoded.whereType<Map<String, dynamic>>().toList();
+    }
+    return [];
+  }
+
+  static Future<Map<String, dynamic>> fetchUserProfile({
+    required int userId,
+  }) async {
+    final response = await http.get(_endpoint('users/$userId'));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        _extractError(response, 'Failed to fetch user profile (${response.statusCode})'),
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+    return {};
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchUserCoupons({
+    required int userId,
+  }) async {
+    final response = await http.get(_endpoint('users/$userId/coupons'));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        _extractError(response, 'Failed to fetch coupons (${response.statusCode})'),
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is List) {
+      return decoded.whereType<Map<String, dynamic>>().toList();
+    }
+    return [];
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchRewardRedemptions() async {
+    final response = await http.get(_endpoint('rewards/redemptions'));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Failed to fetch redemptions (${response.statusCode})');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is List) {
+      return decoded.whereType<Map<String, dynamic>>().toList();
+    }
+    return [];
+  }
+
+  static Future<Map<String, dynamic>> redeemReward({
+    required int rewardId,
+    required int userId,
+  }) async {
+    final response = await http.post(
+      _endpoint('rewards/$rewardId/redeem'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'userId': userId}),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        _extractError(response, 'Redeem failed (${response.statusCode})'),
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+    return {};
   }
 }

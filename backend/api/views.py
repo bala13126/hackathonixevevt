@@ -7,15 +7,19 @@ from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from django.db import IntegrityError
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from .models import Case, Tip, HonourProfile
+from .models import Case, Tip, HonourProfile, Reward, RewardRedemption, UserCoupon
 from .serializers import (
     CaseSerializer,
     CaseStatusUpdateSerializer,
     TipCreateSerializer,
     TipSerializer,
+    RewardSerializer,
+    RewardRedemptionSerializer,
+    UserCouponSerializer,
 )
 
 
@@ -32,9 +36,18 @@ def list_cases(request):
         return Response(serializer.data)
 
     # Handle file upload by passing both data and FILES
-    serializer = CaseSerializer(data=request.data, files=request.FILES)
+    payload = request.data.copy()
+    user_id = payload.get('userId')
+    payload.pop('userId', None)
+    serializer = CaseSerializer(data=payload)
     if serializer.is_valid():
         case = serializer.save()
+        if user_id:
+            try:
+                case.user = User.objects.get(id=user_id)
+                case.save(update_fields=['user'])
+            except User.DoesNotExist:
+                pass
         return Response(CaseSerializer(case).data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -60,12 +73,13 @@ def tips_collection(request):
         serializer = TipSerializer(tips, many=True)
         return Response(serializer.data)
 
-    serializer = TipCreateSerializer(data=request.data, files=request.FILES)
+    serializer = TipCreateSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
     payload = serializer.validated_data
     tip = Tip.objects.create(
         case_id=payload['caseId'],
+        user_id=payload.get('userId'),
         reporter=payload.get('reporter') or 'Anonymous',
         content=payload['content'],
         is_anonymous=payload.get('isAnonymous', False),
@@ -89,17 +103,8 @@ def verify_tip(request, tip_id):
         tip.verified = True
         tip.save(update_fields=['verified'])
 
-        admin_user, _ = User.objects.get_or_create(
-            username='community_hero',
-            defaults={'email': 'hero@example.com'},
-        )
-        profile, _ = HonourProfile.objects.get_or_create(user=admin_user)
-        profile.score = profile.score + 10
-        medals = profile.medals or []
-        if profile.score >= 100 and 'Bronze Rescuer' not in medals:
-            medals.append('Bronze Rescuer')
-        profile.medals = medals
-        profile.save(update_fields=['score', 'medals'])
+        if tip.user:
+            _award_points(tip.user, 10)
 
     return Response(TipSerializer(tip).data)
 
@@ -123,9 +128,68 @@ def list_users(request):
     return Response(response_payload)
 
 
+@api_view(['GET'])
+def user_profile(request, user_id):
+    try:
+        user = User.objects.select_related('honour_profile').get(id=user_id)
+    except User.DoesNotExist:
+        return Response({'detail': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    profile = getattr(user, 'honour_profile', None)
+    return Response(
+        {
+            'id': user.id,
+            'username': user.username,
+            'name': user.get_full_name() or user.username,
+            'email': user.email,
+            'firstName': user.first_name,
+            'lastName': user.last_name,
+            'score': profile.score if profile else 0,
+            'medals': profile.medals if profile else [],
+        }
+    )
+
+
+@api_view(['POST'])
+def update_user_points(request, user_id):
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response({'detail': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        points = int(request.data.get('points', 0))
+    except (TypeError, ValueError):
+        return Response({'detail': 'points must be an integer'}, status=status.HTTP_400_BAD_REQUEST)
+
+    mode = (request.data.get('mode') or 'add').lower()
+    profile, _ = HonourProfile.objects.get_or_create(user=user)
+
+    if mode == 'set':
+        profile.score = max(0, points)
+    else:
+        profile.score = max(0, profile.score + points)
+
+    medals = profile.medals or []
+    if profile.score >= 100 and 'Bronze Rescuer' not in medals:
+        medals.append('Bronze Rescuer')
+    profile.medals = medals
+    profile.save(update_fields=['score', 'medals'])
+
+    return Response(
+        {
+            'id': user.id,
+            'name': user.get_full_name() or user.username,
+            'score': profile.score,
+            'medals': profile.medals,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
 @api_view(['POST'])
 def login(request):
-    username = request.data.get('username') or request.data.get('email')
+    username = request.data.get('username') or request.data.get('email') or request.data.get('phone')
     password = request.data.get('password')
 
     if not username or not password:
@@ -172,15 +236,19 @@ def login(request):
 def register(request):
     username = (request.data.get('username') or '').strip()
     email = (request.data.get('email') or '').strip().lower()
+    phone = (request.data.get('phone') or '').strip()
     password = request.data.get('password')
     first_name = (request.data.get('firstName') or '').strip()
     last_name = (request.data.get('lastName') or '').strip()
 
-    if not username or not email or not password:
+    if not username or not password or (not email and not phone):
         return Response(
-            {'detail': 'username, email and password are required'},
+            {'detail': 'username, email/phone and password are required'},
             status=status.HTTP_400_BAD_REQUEST,
         )
+
+    if not email and phone:
+        email = f'{phone}@phone.local'
 
     if User.objects.filter(username__iexact=username).exists():
         return Response({'detail': 'Username already exists'}, status=status.HTTP_400_BAD_REQUEST)
@@ -207,6 +275,7 @@ def register(request):
         'id': user.id,
         'username': user.username,
         'email': user.email,
+        'phone': phone,
         'firstName': user.first_name,
         'lastName': user.last_name,
         'score': 0,
@@ -214,6 +283,102 @@ def register(request):
     }
 
     return Response(response_data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET', 'POST'])
+def rewards_collection(request):
+    if request.method == 'GET':
+        rewards = Reward.objects.all()
+        return Response(RewardSerializer(rewards, many=True).data)
+
+    serializer = RewardSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    reward = serializer.save()
+    return Response(RewardSerializer(reward).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+def reward_redemptions(request):
+    redemptions = RewardRedemption.objects.select_related('reward', 'user').all()
+    return Response(RewardRedemptionSerializer(redemptions, many=True).data)
+
+
+@api_view(['GET'])
+def user_coupons(request, user_id):
+    try:
+        User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response({'detail': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    coupons = UserCoupon.objects.filter(user_id=user_id).select_related('reward')
+    return Response(UserCouponSerializer(coupons, many=True).data)
+
+
+@api_view(['POST'])
+def redeem_reward(request, reward_id):
+    user_id = request.data.get('userId')
+    if not user_id:
+        return Response({'detail': 'userId is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response({'detail': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    reward = Reward.objects.filter(id=reward_id, is_active=True).first()
+    if not reward:
+        return Response({'detail': 'Reward not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    profile, _ = HonourProfile.objects.get_or_create(user=user)
+    if profile.score < reward.points_required:
+        return Response({'detail': 'Not enough points'}, status=status.HTTP_400_BAD_REQUEST)
+
+    redemption = RewardRedemption.objects.create(reward=reward, user=user)
+    return Response(RewardRedemptionSerializer(redemption).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['PATCH'])
+def review_reward_redemption(request, redemption_id):
+    redemption = RewardRedemption.objects.select_related('reward', 'user').filter(id=redemption_id).first()
+    if not redemption:
+        return Response({'detail': 'Redemption not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    status_value = request.data.get('status')
+    review_notes = request.data.get('review_notes', '')
+
+    if status_value not in [RewardRedemption.STATUS_APPROVED, RewardRedemption.STATUS_REJECTED]:
+        return Response({'detail': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
+
+    with transaction.atomic():
+        redemption.status = status_value
+        redemption.review_notes = review_notes
+        redemption.reviewed_by = request.user if request.user.is_authenticated else None
+        redemption.reviewed_at = timezone.now()
+        redemption.save()
+
+        if status_value == RewardRedemption.STATUS_APPROVED:
+            profile, _ = HonourProfile.objects.get_or_create(user=redemption.user)
+            profile.score = max(0, profile.score - redemption.reward.points_required)
+            profile.save(update_fields=['score'])
+            
+            UserCoupon.objects.create(
+                user=redemption.user,
+                reward=redemption.reward,
+                status=UserCoupon.STATUS_ACTIVE,
+                redemption=redemption,
+            )
+
+    return Response(RewardRedemptionSerializer(redemption).data)
+
+
+def _award_points(user, points):
+    profile, _ = HonourProfile.objects.get_or_create(user=user)
+    profile.score = profile.score + points
+    medals = profile.medals or []
+    if profile.score >= 100 and 'Bronze Rescuer' not in medals:
+        medals.append('Bronze Rescuer')
+    profile.medals = medals
+    profile.save(update_fields=['score', 'medals'])
 
 
 def _get_openai_key():

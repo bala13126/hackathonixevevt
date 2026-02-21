@@ -10,7 +10,8 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
 
@@ -22,9 +23,10 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       vsync: this,
     );
 
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
-    );
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
 
     _controller.forward();
 
@@ -56,7 +58,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                 height: 120,
                 decoration: BoxDecoration(
                   color: AppColors.white,
-                  borderRadius: BorderRadius.circular(AppConstants.radiusXLarge),
+                  borderRadius: BorderRadius.circular(
+                    AppConstants.radiusXLarge,
+                  ),
                 ),
                 child: const Icon(
                   Icons.people,
@@ -74,7 +78,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               ),
               const SizedBox(height: AppConstants.spacing16),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppConstants.spacing48),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppConstants.spacing48,
+                ),
                 child: Text(
                   AppConstants.appTagline,
                   textAlign: TextAlign.center,

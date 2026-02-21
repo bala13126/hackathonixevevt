@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/constants/app_constants.dart';
@@ -17,23 +17,16 @@ class SubmitTipScreen extends StatefulWidget {
 
 class _SubmitTipScreenState extends State<SubmitTipScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _descriptionController = TextEditingController();
-  final _latitudeController = TextEditingController();
-  final _longitudeController = TextEditingController();
-  final _reporterNameController = TextEditingController();
-  final _reporterContactController = TextEditingController();
+  final _messageController = TextEditingController();
   final ImagePicker _imagePicker = ImagePicker();
+  bool _isAnonymous = false;
+  bool _shareLocation = false;
   bool _isSubmitting = false;
   XFile? _attachment;
-  final DateTime _capturedAt = DateTime.now();
 
   @override
   void dispose() {
-    _descriptionController.dispose();
-    _latitudeController.dispose();
-    _longitudeController.dispose();
-    _reporterNameController.dispose();
-    _reporterContactController.dispose();
+    _messageController.dispose();
     super.dispose();
   }
 
@@ -51,49 +44,26 @@ class _SubmitTipScreenState extends State<SubmitTipScreen> {
       return;
     }
 
-    final latitude = double.tryParse(_latitudeController.text.trim());
-    final longitude = double.tryParse(_longitudeController.text.trim());
-    if (latitude == null || longitude == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please provide valid sighting coordinates.'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-      return;
-    }
-
-    if (_attachment == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Photo evidence is required for sighting reports.'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-      return;
-    }
-
     setState(() {
       _isSubmitting = true;
     });
 
     try {
-      await BackendApiService.submitSightingReport(
+      final prefs = await SharedPreferences.getInstance();
+      final userId = prefs.getInt('user_id');
+      await BackendApiService.submitTip(
         caseId: parsedCaseId,
-        description: _descriptionController.text.trim(),
-        latitude: latitude,
-        longitude: longitude,
-        image: _attachment!,
-        reporterName: _reporterNameController.text.trim(),
-        reporterContact: _reporterContactController.text.trim(),
+        content: _messageController.text.trim(),
+        isAnonymous: _isAnonymous,
+        shareLocation: _shareLocation,
+        attachment: _attachment,
+        userId: userId,
       );
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'Sighting report submitted. Status: Pending Review.',
-          ),
+          content: Text('Tip submitted successfully. Thank you for helping!'),
           backgroundColor: AppColors.success,
         ),
       );
@@ -115,10 +85,10 @@ class _SubmitTipScreenState extends State<SubmitTipScreen> {
     }
   }
 
-  Future<void> _pickAttachment(ImageSource source) async {
+  Future<void> _pickAttachment() async {
     try {
       final selected = await _imagePicker.pickImage(
-        source: source,
+        source: ImageSource.gallery,
         imageQuality: 85,
       );
       if (selected != null) {
@@ -134,80 +104,6 @@ class _SubmitTipScreenState extends State<SubmitTipScreen> {
     }
   }
 
-  Future<void> _fillCoordinatesFromGps() async {
-    try {
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Location permission is needed to fetch GPS.'),
-          ),
-        );
-        return;
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-
-      _latitudeController.text = position.latitude.toStringAsFixed(6);
-      _longitudeController.text = position.longitude.toStringAsFixed(6);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('GPS location captured.')),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to fetch GPS location right now.')),
-      );
-    }
-  }
-
-  void _showPhotoSourceSheet() {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_camera_outlined),
-              title: const Text('Capture photo'),
-              onTap: () {
-                Navigator.pop(context);
-                _pickAttachment(ImageSource.camera);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Upload from gallery'),
-              onTap: () {
-                Navigator.pop(context);
-                _pickAttachment(ImageSource.gallery);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _formatTimestamp(DateTime value) {
-    final local = value.toLocal();
-    final month = local.month.toString().padLeft(2, '0');
-    final day = local.day.toString().padLeft(2, '0');
-    final hour = local.hour.toString().padLeft(2, '0');
-    final minute = local.minute.toString().padLeft(2, '0');
-    return '${local.year}-$month-$day $hour:$minute';
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -219,7 +115,7 @@ class _SubmitTipScreenState extends State<SubmitTipScreen> {
           icon: const Icon(Icons.close),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text('Public Sighting Report', style: AppTextStyles.headlineMedium),
+        title: Text('Submit Tip', style: AppTextStyles.headlineMedium),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(AppConstants.spacing24),
@@ -232,11 +128,11 @@ class _SubmitTipScreenState extends State<SubmitTipScreen> {
               Container(
                 padding: const EdgeInsets.all(AppConstants.spacing16),
                 decoration: BoxDecoration(
-                  color: AppColors.info.withValues(alpha: 0.1),
+                  color: AppColors.info.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(
                     AppConstants.radiusMedium,
                   ),
-                  border: Border.all(color: AppColors.info.withValues(alpha: 0.3)),
+                  border: Border.all(color: AppColors.info.withOpacity(0.3)),
                 ),
                 child: Row(
                   children: [
@@ -244,7 +140,7 @@ class _SubmitTipScreenState extends State<SubmitTipScreen> {
                     const SizedBox(width: AppConstants.spacing12),
                     Expanded(
                       child: Text(
-                        'Report what you observed. Your report will be linked to this case and marked Pending Review.',
+                        'Every tip matters. Please share any information that might help.',
                         style: AppTextStyles.bodySmall.copyWith(
                           color: AppColors.textPrimary,
                         ),
@@ -256,20 +152,21 @@ class _SubmitTipScreenState extends State<SubmitTipScreen> {
 
               const SizedBox(height: AppConstants.spacing32),
 
-              Text('Observation', style: AppTextStyles.headlineSmall),
+              // Message Input
+              Text('Your Information', style: AppTextStyles.headlineSmall),
 
               const SizedBox(height: AppConstants.spacing16),
 
               TextFormField(
-                controller: _descriptionController,
+                controller: _messageController,
                 decoration: const InputDecoration(
-                  labelText: 'Describe what you observed',
+                  labelText: 'Describe what you saw or know',
                   alignLabelWithHint: true,
                 ),
                 maxLines: 6,
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
-                    return 'Description is required';
+                    return 'Please provide some information';
                   }
                   return null;
                 },
@@ -277,12 +174,13 @@ class _SubmitTipScreenState extends State<SubmitTipScreen> {
 
               const SizedBox(height: AppConstants.spacing24),
 
-              Text('Photo Evidence', style: AppTextStyles.headlineSmall),
+              // Image Picker UI
+              Text('Add Photo (Optional)', style: AppTextStyles.headlineSmall),
 
               const SizedBox(height: AppConstants.spacing16),
 
               GestureDetector(
-                onTap: _showPhotoSourceSheet,
+                onTap: _pickAttachment,
                 child: Container(
                   height: 150,
                   decoration: BoxDecoration(
@@ -308,7 +206,7 @@ class _SubmitTipScreenState extends State<SubmitTipScreen> {
                               ),
                               SizedBox(height: 8),
                               Text(
-                                'Tap to capture or upload photo',
+                                'Tap to add photo',
                                 style: TextStyle(
                                   color: AppColors.textSecondary,
                                   fontSize: 14,
@@ -342,116 +240,40 @@ class _SubmitTipScreenState extends State<SubmitTipScreen> {
 
               const SizedBox(height: AppConstants.spacing32),
 
-              Text('Exact Location', style: AppTextStyles.headlineSmall),
+              // Options
+              Text('Options', style: AppTextStyles.headlineSmall),
 
               const SizedBox(height: AppConstants.spacing16),
 
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _fillCoordinatesFromGps,
-                      icon: const Icon(Icons.my_location),
-                      label: const Text('Use GPS'),
-                    ),
-                  ),
-                ],
+              SwitchListTile(
+                title: const Text('Share my location'),
+                subtitle: const Text(
+                  'Help investigators with location context',
+                ),
+                value: _shareLocation,
+                onChanged: (value) {
+                  setState(() {
+                    _shareLocation = value;
+                  });
+                },
+                activeColor: AppColors.primary,
               ),
 
-              const SizedBox(height: AppConstants.spacing12),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _latitudeController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                        signed: true,
-                      ),
-                      decoration: const InputDecoration(labelText: 'Latitude'),
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Required';
-                        }
-                        if (double.tryParse(value.trim()) == null) {
-                          return 'Invalid';
-                        }
-                        return null;
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: AppConstants.spacing12),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _longitudeController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                        signed: true,
-                      ),
-                      decoration: const InputDecoration(labelText: 'Longitude'),
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Required';
-                        }
-                        if (double.tryParse(value.trim()) == null) {
-                          return 'Invalid';
-                        }
-                        return null;
-                      },
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: AppConstants.spacing24),
-
-              Text('Reporter (Optional)', style: AppTextStyles.headlineSmall),
-
-              const SizedBox(height: AppConstants.spacing16),
-
-              TextFormField(
-                controller: _reporterNameController,
-                decoration: const InputDecoration(
-                  labelText: 'Your name (optional)',
-                ),
-              ),
-
-              const SizedBox(height: AppConstants.spacing12),
-
-              TextFormField(
-                controller: _reporterContactController,
-                decoration: const InputDecoration(
-                  labelText: 'Your contact (optional)',
-                ),
-              ),
-
-              const SizedBox(height: AppConstants.spacing24),
-
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(AppConstants.spacing16),
-                decoration: BoxDecoration(
-                  color: AppColors.grey100,
-                  borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.schedule, color: AppColors.textSecondary),
-                    const SizedBox(width: AppConstants.spacing8),
-                    Expanded(
-                      child: Text(
-                        'Timestamp: ${_formatTimestamp(_capturedAt)}',
-                        style: AppTextStyles.bodySmall,
-                      ),
-                    ),
-                  ],
-                ),
+              SwitchListTile(
+                title: const Text('Submit anonymously'),
+                subtitle: const Text('Your identity will not be shared'),
+                value: _isAnonymous,
+                onChanged: (value) {
+                  setState(() {
+                    _isAnonymous = value;
+                  });
+                },
+                activeColor: AppColors.primary,
               ),
 
               const SizedBox(height: AppConstants.spacing32),
 
+              // Submit Button
               SizedBox(
                 width: double.infinity,
                 height: 56,
@@ -463,7 +285,7 @@ class _SubmitTipScreenState extends State<SubmitTipScreen> {
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Submit Sighting Report'),
+                      : const Text('Submit Tip'),
                 ),
               ),
             ],

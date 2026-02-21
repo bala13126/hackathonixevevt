@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/services/backend_api_service.dart';
+import '../../core/services/geo_smart_alert_service.dart';
 import '../../widgets/urgency_badge.dart';
 import '../../models/missing_person.dart';
 
@@ -23,6 +24,7 @@ class _HomePageState extends State<HomePage>
   String _searchQuery = '';
   bool _isLoadingCases = true;
   String? _casesLoadError;
+  final GeoSmartAlertService _geoService = GeoSmartAlertService();
 
   // dynamic monitoring state
   List<MissingPerson> _urgentCases = [];
@@ -63,6 +65,7 @@ class _HomePageState extends State<HomePage>
             .toList();
         // Feed shows all cases but prioritizes recent ones
         _feedPosts = apiCases;
+        _geoAlertRadius = _geoService.recommendedRadiusForCases(apiCases);
       });
     } catch (error) {
       if (!mounted) return;
@@ -629,23 +632,13 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-  int _urgencyRank(UrgencyLevel urgency) {
-    switch (urgency) {
-      case UrgencyLevel.critical:
-        return 0;
-      case UrgencyLevel.high:
-        return 1;
-      case UrgencyLevel.normal:
-        return 2;
-    }
-  }
-
   int _compareCasePriority(MissingPerson a, MissingPerson b) {
-    final urgencyCompare = _urgencyRank(
-      a.urgency,
-    ).compareTo(_urgencyRank(b.urgency));
-    if (urgencyCompare != 0) return urgencyCompare;
-    return b.lastSeenTime.compareTo(a.lastSeenTime);
+    final scoreA = _geoService.priorityScore(a);
+    final scoreB = _geoService.priorityScore(b);
+    if (scoreA == scoreB) {
+      return b.lastSeenTime.compareTo(a.lastSeenTime);
+    }
+    return scoreB.compareTo(scoreA);
   }
 
   String _timeSinceMissing(DateTime lastSeenTime) {

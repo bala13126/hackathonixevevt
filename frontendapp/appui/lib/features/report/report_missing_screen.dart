@@ -69,26 +69,31 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
       if ((raw == null || raw.trim().isEmpty) && latestText.trim().isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No AI assistant details found yet.'),
-            ),
+            const SnackBar(content: Text('No AI assistant details found yet.')),
           );
         }
         return;
       }
 
-      final decoded = raw == null || raw.trim().isEmpty
-          ? <String, dynamic>{}
-          : jsonDecode(raw);
-      if (decoded is Map<String, dynamic>) {
-        if ((decoded['description'] ?? '').toString().trim().isEmpty &&
-            latestText.trim().isNotEmpty) {
-          decoded['description'] = latestText.trim();
+      Map<String, dynamic> decoded = <String, dynamic>{};
+      if (raw != null && raw.trim().isNotEmpty) {
+        final parsed = jsonDecode(raw);
+        if (parsed is Map<String, dynamic>) {
+          decoded = parsed;
         }
+      }
+
+      if ((decoded['description'] ?? '').toString().trim().isEmpty &&
+          latestText.trim().isNotEmpty) {
+        decoded['description'] = latestText.trim();
+      }
+
+      if (decoded.isNotEmpty) {
         await _applyParsedFields(decoded);
-        if (_lastSeenLocationController.text.trim().isEmpty) {
-          await _fillLocationFromDevice();
-        }
+      }
+
+      if (_lastSeenLocationController.text.trim().isEmpty) {
+        await _fillLocationFromDevice();
       }
     } catch (error) {
       if (!mounted) return;
@@ -150,6 +155,7 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
       await _pulseField('location');
     }
 
+        
     final timeValue = (parsed['lastSeenTime'] ?? '').toString();
     if (timeValue.isNotEmpty) {
       _lastSeenTimeController.text = timeValue;
@@ -207,7 +213,9 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Location permission is needed to auto-fill location.'),
+              content: Text(
+                'Location permission is needed to auto-fill location.',
+              ),
             ),
           );
         }
@@ -305,6 +313,8 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
     });
 
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final userId = prefs.getInt('user_id');
       final createdCase = await BackendApiService.createCase(
         name: _nameController.text.trim(),
         age: int.tryParse(_ageController.text.trim()) ?? 0,
@@ -312,6 +322,7 @@ class _ReportMissingScreenState extends State<ReportMissingScreen> {
         description: _descriptionController.text.trim(),
         urgency: UrgencyLevel.high,
         photo: _selectedPhoto,
+        userId: userId,
       );
 
       if (!mounted) return;

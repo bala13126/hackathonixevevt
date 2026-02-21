@@ -22,7 +22,8 @@ class _AIChatScreenState extends State<AIChatScreen> {
   final List<ChatMessage> _messages = [
     ChatMessage(
       id: '1',
-      text: 'Hello! I can help you report a missing person, suggest next steps, or review case details. How can I help today?',
+      text:
+          'Hello! I can help you report a missing person, suggest next steps, or review case details. How can I help today?',
       sender: MessageSender.ai,
       timestamp: DateTime.now(),
     ),
@@ -42,6 +43,10 @@ class _AIChatScreenState extends State<AIChatScreen> {
     'How to submit a tip',
     'Show nearby cases',
     'Emergency steps',
+    'What info do I need to report?',
+    'Photo requirements',
+    'How to search safely',
+    'How to track my case',
   ];
 
   @override
@@ -158,9 +163,9 @@ class _AIChatScreenState extends State<AIChatScreen> {
     });
 
     if (transcript.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No speech detected.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No speech detected.')));
       return;
     }
 
@@ -481,7 +486,9 @@ class _AIChatScreenState extends State<AIChatScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: AppConstants.spacing12),
       child: Row(
-        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: isUser
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
         children: [
           if (!isUser)
             Container(
@@ -500,10 +507,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
             ),
           Flexible(
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 12,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 color: isUser
                     ? AppColors.primary
@@ -513,7 +517,9 @@ class _AIChatScreenState extends State<AIChatScreen> {
               child: Text(
                 message.text,
                 style: TextStyle(
-                  color: isUser ? Colors.white : (isDark ? Colors.white : AppColors.textPrimary),
+                  color: isUser
+                      ? Colors.white
+                      : (isDark ? Colors.white : AppColors.textPrimary),
                 ),
               ),
             ),

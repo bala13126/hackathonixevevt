@@ -4,7 +4,8 @@ from .models import PublicReport
 
 class PublicReportSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(read_only=True)
-    missing_case_id = serializers.IntegerField(write_only=True)
+    missing_case_id = serializers.IntegerField(source='missing_case_id', read_only=True)
+    reporter_user_id = serializers.IntegerField(source='reporter_user_id', required=False)
     reviewer_name = serializers.CharField(
         source='reviewed_by_admin.username',
         read_only=True
@@ -17,12 +18,14 @@ class PublicReportSerializer(serializers.ModelSerializer):
             'missing_case_id',
             'reporter_name',
             'reporter_contact',
+            'reporter_user_id',
             'description',
             'image',
             'latitude',
             'longitude',
             'created_at',
             'status',
+            'points_awarded',
             'reviewed_by_admin',
             'reviewer_name',
             'review_notes',
@@ -34,6 +37,7 @@ class PublicReportSerializer(serializers.ModelSerializer):
             'reviewed_by_admin',
             'reviewed_at',
             'reviewer_name',
+            'points_awarded',
         ]
 
     def validate(self, data):
@@ -51,10 +55,14 @@ class PublicReportSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
-class PublicReportReviewSerializer(serializers.Serializer):
-    status = serializers.CharField()
-    review_notes = serializers.CharField(required=False, allow_blank=True)
-    closeCase = serializers.BooleanField(required=False, default=False)
+class PublicReportReviewSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PublicReport
+        fields = [
+            'id',
+            'status',
+            'review_notes',
+        ]
 
     def validate_status(self, value):
         valid_statuses = [

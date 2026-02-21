@@ -127,26 +127,16 @@ class LocationPermissionScreen extends StatelessWidget {
             color: AppColors.accent.withOpacity(0.1),
             borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
           ),
-          child: Icon(
-            icon,
-            color: AppColors.accent,
-            size: 24,
-          ),
+          child: Icon(icon, color: AppColors.accent, size: 24),
         ),
         const SizedBox(width: AppConstants.spacing16),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                title,
-                style: AppTextStyles.headlineSmall,
-              ),
+              Text(title, style: AppTextStyles.headlineSmall),
               const SizedBox(height: 4),
-              Text(
-                description,
-                style: AppTextStyles.bodySmall,
-              ),
+              Text(description, style: AppTextStyles.bodySmall),
             ],
           ),
         ),

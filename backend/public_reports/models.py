@@ -23,10 +23,18 @@ class PublicReport(models.Model):
     )
     reporter_name = models.CharField(max_length=255, blank=True, null=True)
     reporter_contact = models.CharField(max_length=255, blank=True, null=True)
+    reporter_user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='public_reports',
+    )
     description = models.TextField()
     image = models.ImageField(upload_to='public_reports/')
     latitude = models.FloatField()
     longitude = models.FloatField()
+    points_awarded = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     status = models.CharField(
         max_length=16,

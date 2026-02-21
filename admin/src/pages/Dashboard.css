@@ -247,13 +247,9 @@ tbody tr:hover {
 .status-badge.active { background-color: #bee3f8; color: #2c5282; }
 .status-badge.solved { background-color: #c6f6d5; color: #22543d; }
 .status-badge.rejected { background-color: #fed7d7; color: #822727; }
-<<<<<<< HEAD
-.status-badge.approved { background-color: #bee3f8; color: #2c5282; }
-.status-badge.issued { background-color: #c6f6d5; color: #22543d; }
-=======
-.status-badge.reviewed { background-color: #c3dafe; color: #2a4365; }
+.status-badge.reviewed { background-color: #e2e8f0; color: #2d3748; }
 .status-badge.accepted { background-color: #c6f6d5; color: #22543d; }
->>>>>>> b20a93bd0bdb027fb7c8c54077d142be9756b03f
+.status-badge.approved { background-color: #c6f6d5; color: #22543d; }
 
 .urgency-badge { padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; }
 .urgency-badge.high { background-color: #fed7d7; color: #822727; }
@@ -263,6 +259,14 @@ tbody tr:hover {
 button[class^="btn-"] { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; margin-right: 5px; font-size: 12px; color: white; }
 button[class^="btn-"]:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
 button[class^="btn-"]:active { transform: translateY(0); }
+
+.points-input {
+  width: 80px;
+  padding: 6px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+}
 
 .btn-approve { background-color: #48bb78; }
 .btn-reject { background-color: #f56565; }

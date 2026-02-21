@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/services/backend_api_service.dart';
@@ -60,10 +61,36 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      await BackendApiService.login(
+      final payload = await BackendApiService.login(
         usernameOrEmail: _emailPhoneController.text.trim(),
         password: _passwordController.text.trim(),
       );
+      final prefs = await SharedPreferences.getInstance();
+      if (payload.isNotEmpty) {
+        final userId = payload['id'];
+        if (userId is int) {
+          await prefs.setInt('user_id', userId);
+        }
+        await prefs.setString(
+          'profile_name',
+          (payload['firstName'] ?? '').toString().trim().isNotEmpty
+              ? '${payload['firstName']} ${payload['lastName'] ?? ''}'.trim()
+              : (payload['username'] ?? '').toString(),
+        );
+        final score = payload['score'];
+        if (score is int) {
+          await prefs.setInt('honor_score', score);
+          await prefs.setInt('redeem_points', score);
+        }
+        final email = payload['email'];
+        if (email is String && email.isNotEmpty && !email.endsWith('@phone.local')) {
+          await prefs.setString('profile_email', email);
+        }
+        final loginValue = _emailPhoneController.text.trim();
+        if (RegExp(r'^\d{7,15}$').hasMatch(loginValue)) {
+          await prefs.setString('profile_phone', loginValue);
+        }
+      }
       if (!mounted) return;
       Navigator.pushReplacementNamed(context, AppConstants.routeMain);
     } catch (error) {
