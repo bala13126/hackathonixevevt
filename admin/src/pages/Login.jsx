@@ -4,14 +4,21 @@ import { useNavigate } from "react-router-dom";
 import "../styles/dashboard.css";
 
 const Login = () => {
-  const { login } = useContext(AuthContext);
-  const [username, setUsername] = useState("");
+  const { signIn } = useContext(AuthContext);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState(null);
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    login(username || "admin");
-    navigate("/dashboard");
+    setError(null);
+    try {
+      await signIn(email, password);
+      navigate("/dashboard");
+    } catch (err) {
+      setError(err.message || "Login failed");
+    }
   };
 
   return (
@@ -20,12 +27,21 @@ const Login = () => {
         <h2>Admin Login</h2>
         <form onSubmit={handleSubmit}>
           <input
-            type="text"
-            placeholder="Username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
           />
           <button type="submit">Login</button>
+          {error && <p style={{ color: "crimson" }}>{error}</p>}
         </form>
       </div>
     </div>

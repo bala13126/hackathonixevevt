@@ -34,7 +34,7 @@ const Dashboard = () => {
   // Real-time Data State
   const [cases, setCases] = useState([]);
   const [tips, setTips] = useState([]);
-  const [users, setUsers] = useState([]);
+  const [rewards, setRewards] = useState([]);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [isLoading, setIsLoading] = useState(true);
 
@@ -45,15 +45,15 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [casesRes, tipsRes, usersRes] = await Promise.all([
+        const [casesRes, tipsRes, rewardsRes] = await Promise.all([
           fetch(`${API_BASE_URL}/cases`),
           fetch(`${API_BASE_URL}/tips`),
-          fetch(`${API_BASE_URL}/users`)
+          fetch(`${API_BASE_URL}/rewards`)
         ]);
 
         if (casesRes.ok) setCases(await casesRes.json());
         if (tipsRes.ok) setTips(await tipsRes.json());
-        if (usersRes.ok) setUsers(await usersRes.json());
+        if (rewardsRes.ok) setRewards(await rewardsRes.json());
         setLastUpdated(new Date());
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
@@ -94,6 +94,26 @@ const Dashboard = () => {
       });
     } catch (error) {
       console.error('Failed to verify tip:', error);
+    }
+  };
+
+  const handleRewardAction = async (id, action) => {
+    // Optimistic UI update
+    const updates = { redeem_status: action };
+    if (action === 'Issued') {
+      updates.voucher_code = 'VOUCH-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+    }
+
+    setRewards(rewards.map(r => r.id === id ? { ...r, ...updates } : r));
+
+    try {
+      await fetch(`${API_BASE_URL}/rewards/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+    } catch (error) {
+      console.error('Failed to update reward:', error);
     }
   };
 
@@ -276,28 +296,44 @@ const Dashboard = () => {
     </div>
   );
 
-  const renderHonour = () => (
+  const renderRewards = () => (
     <div className="table-container">
-      <h2>Honour System Management</h2>
+      <h2>Reward & Voucher Management</h2>
       <table>
         <thead>
           <tr>
-            <th>User</th>
-            <th>Score</th>
-            <th>Medals</th>
-            <th>Action</th>
+            <th>User ID</th>
+            <th>Total Points</th>
+            <th>Reward Tier</th>
+            <th>Redeem Status</th>
+            <th>Voucher Code</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {users.length === 0 ? (
-            <tr><td colSpan="4" className="empty-state">No users in the honour system yet.</td></tr>
-          ) : users.map(u => (
-            <tr key={u.id}>
-              <td>{u.name}</td>
-              <td>{u.score}</td>
-              <td>{u.medals.join(', ')}</td>
+          {rewards.length === 0 ? (
+            <tr><td colSpan="6" className="empty-state">No reward requests found.</td></tr>
+          ) : rewards.map(r => (
+            <tr key={r.id}>
+              <td>{r.user_id}</td>
+              <td>{r.total_points}</td>
+              <td>{r.reward_tier}</td>
               <td>
-                <button className="btn-cert">Issue Certificate</button>
+                <span className={`status-badge ${r.redeem_status.toLowerCase()}`}>
+                  {r.redeem_status}
+                </span>
+              </td>
+              <td>{r.voucher_code || '-'}</td>
+              <td>
+                {r.redeem_status === 'Pending' && (
+                  <>
+                    <button className="btn-approve" onClick={() => handleRewardAction(r.id, 'Approved')}>Approve</button>
+                    <button className="btn-reject" onClick={() => handleRewardAction(r.id, 'Rejected')}>Reject</button>
+                  </>
+                )}
+                {r.redeem_status === 'Approved' && (
+                  <button className="btn-verify" onClick={() => handleRewardAction(r.id, 'Issued')}>Issue Voucher</button>
+                )}
               </td>
             </tr>
           ))}
@@ -324,7 +360,7 @@ const Dashboard = () => {
           <button className={activeTab === 'cases' ? 'active' : ''} onClick={() => setActiveTab('cases')}><FiCheckSquare /><span>Case Management</span></button>
           <button className={activeTab === 'tips' ? 'active' : ''} onClick={() => setActiveTab('tips')}><FiMessageSquare /><span>Tip Monitoring</span></button>
           <button className={activeTab === 'analytics' ? 'active' : ''} onClick={() => setActiveTab('analytics')}><FiBarChart2 /><span>Analytics</span></button>
-          <button className={activeTab === 'honour' ? 'active' : ''} onClick={() => setActiveTab('honour')}><FiAward /><span>Honour System</span></button>
+          <button className={activeTab === 'rewards' ? 'active' : ''} onClick={() => setActiveTab('rewards')}><FiAward /><span>Rewards</span></button>
         </nav>
       </div>
       <div className="main-content">
@@ -342,7 +378,7 @@ const Dashboard = () => {
           {activeTab === 'cases' && renderCases()}
           {activeTab === 'tips' && renderTips()}
           {activeTab === 'analytics' && renderAnalytics()}
-          {activeTab === 'honour' && renderHonour()}
+          {activeTab === 'rewards' && renderRewards()}
         </div>
       </div>
     </div>
